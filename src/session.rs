@@ -60,12 +60,15 @@ pub struct Session {
 
 impl Session {
     pub fn new(config: Config) -> Result<Self> {
+        Self::new_from_config(config, None)
+    }
+
+    pub fn new_from_config(config: Config, model_override: Option<String>) -> Result<Self> {
         let config = Arc::new(config);
         let provider = create_provider(&config)?;
 
-        let model = config
-            .model
-            .clone()
+        let model = model_override
+            .or_else(|| config.model.clone())
             .unwrap_or_else(|| "openai/gpt-4o".to_string());
         let provider_name = model.split('/').next().unwrap_or("openai");
 

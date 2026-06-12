@@ -42,6 +42,12 @@ pub enum Commands {
     },
     /// Print version
     Version,
+    /// Start HTTP server
+    Serve {
+        /// Port to listen on
+        #[arg(long, default_value = "3000")]
+        port: u16,
+    },
 }
 
 #[derive(Subcommand)]

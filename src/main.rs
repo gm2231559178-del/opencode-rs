@@ -2,6 +2,7 @@ mod cli;
 mod config;
 mod llm;
 mod log;
+mod server;
 mod session;
 mod session_store;
 mod theme;
@@ -43,6 +44,9 @@ async fn main() -> Result<()> {
                 println!("Setting {} = {} (not yet implemented)", key, value);
             }
         },
+        Some(cli::Commands::Serve { port }) => {
+            server::run_server(cfg, store, *port).await;
+        }
         Some(cli::Commands::Version) => {
             println!("opencode-rs v{}", env!("CARGO_PKG_VERSION"));
         }

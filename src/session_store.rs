@@ -18,7 +18,7 @@ pub struct SessionStore {
     conn: Mutex<Connection>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct StoredSession {
     pub id: String,
     pub model: String,
