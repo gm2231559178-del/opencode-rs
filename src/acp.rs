@@ -130,7 +130,7 @@ impl AcpServer {
                 let mut session = match Session::new_from_config(
                     (*self.config).clone(),
                     model.map(|m| m.to_string()),
-                ) {
+                ).await {
                     Ok(s) => s,
                     Err(e) => {
                         return JsonRpcResponse::error(

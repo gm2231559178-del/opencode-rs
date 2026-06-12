@@ -34,7 +34,7 @@ Features from the original [opencode](https://github.com/anomalyco/opencode) pro
 | Session sharing | `[x]` `/share`, `/share import`, `/share list` | `packages/core/src/share/sql.ts` |
 | Stats tracking | `[x]` `/stats` shows token/prompt/call counts | `packages/stats/` |
 | mDNS discovery | `[x]` `_opencode._tcp.local` via `mdns-sd` | `packages/opencode/src/server/mdns.ts` |
-| MCP support | `[ ]` | `packages/core/src/config/mcp.ts` |
+| MCP support | `[x]` Config-driven MCP servers, tool discovery via JSON-RPC | `packages/core/src/config/mcp.ts` |
 | Plugin system | `[ ]` | `packages/core/src/plugin.ts` |
 | LSP integration | `[ ]` | `packages/core/src/config/lsp.ts` |
 | Theme system | `[x]` 6 themes, `/theme` command | `packages/tui/src/theme/` |

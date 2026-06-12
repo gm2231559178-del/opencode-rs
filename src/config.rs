@@ -4,22 +4,6 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct Config {
-    #[serde(default)]
-    pub provider: HashMap<String, ProviderConfig>,
-    pub model: Option<String>,
-    #[serde(default)]
-    pub permission: PermissionConfig,
-    #[serde(default)]
-    pub tools: ToolsConfig,
-    pub shell: Option<String>,
-    pub instructions: Option<Vec<String>>,
-    pub username: Option<String>,
-    #[serde(default)]
-    pub agent: HashMap<String, AgentConfig>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProviderConfig {
     pub api_key: Option<String>,
     pub base_url: Option<String>,
@@ -46,6 +30,32 @@ pub struct ToolsConfig {
 pub struct AgentConfig {
     pub model: Option<String>,
     pub instructions: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct McpServerConfig {
+    pub command: Option<String>,
+    pub args: Option<Vec<String>>,
+    pub url: Option<String>,
+    pub transport: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct Config {
+    #[serde(default)]
+    pub provider: HashMap<String, ProviderConfig>,
+    pub model: Option<String>,
+    #[serde(default)]
+    pub permission: PermissionConfig,
+    #[serde(default)]
+    pub tools: ToolsConfig,
+    pub shell: Option<String>,
+    pub instructions: Option<Vec<String>>,
+    pub username: Option<String>,
+    #[serde(default)]
+    pub agent: HashMap<String, AgentConfig>,
+    #[serde(default)]
+    pub mcp: HashMap<String, McpServerConfig>,
 }
 
 pub fn load_config() -> Result<Config> {
@@ -184,6 +194,13 @@ fn merge_config(base: Config, overlay: Config) -> Config {
         agent: {
             let mut merged = base.agent;
             for (key, val) in overlay.agent {
+                merged.insert(key, val);
+            }
+            merged
+        },
+        mcp: {
+            let mut merged = base.mcp;
+            for (key, val) in overlay.mcp {
                 merged.insert(key, val);
             }
             merged

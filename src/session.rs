@@ -59,11 +59,11 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn new(config: Config) -> Result<Self> {
-        Self::new_from_config(config, None)
+    pub async fn new(config: Config) -> Result<Self> {
+        Self::new_from_config(config, None).await
     }
 
-    pub fn new_from_config(config: Config, model_override: Option<String>) -> Result<Self> {
+    pub async fn new_from_config(config: Config, model_override: Option<String>) -> Result<Self> {
         let config = Arc::new(config);
         let provider = create_provider(&config)?;
 
@@ -83,10 +83,13 @@ impl Session {
             .map(|i| i.join("\n"))
             .unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT.to_string());
 
-        let tools = builtin_tools();
+        let mut tools = builtin_tools();
         let cwd = std::env::current_dir()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|_| "/".to_string());
+
+        let mut mcp_tools = crate::mcp::connect_mcp_servers(&config.mcp).await;
+        tools.append(&mut mcp_tools);
 
         Ok(Self {
             id: uuid::Uuid::new_v4().to_string(),

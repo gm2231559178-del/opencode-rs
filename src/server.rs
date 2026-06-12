@@ -70,7 +70,7 @@ async fn chat(
             .unwrap_or_else(|| "openai/gpt-4o".to_string())
     });
 
-    let mut session = match Session::new_from_config((*state.config).clone(), Some(model)) {
+    let mut session = match Session::new_from_config((*state.config).clone(), Some(model)).await {
         Ok(s) => s,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e.to_string()}))).into_response(),
     };

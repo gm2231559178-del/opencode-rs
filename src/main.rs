@@ -3,6 +3,7 @@ mod cli;
 mod config;
 mod llm;
 mod log;
+mod mcp;
 mod mdns;
 mod server;
 mod session;
@@ -28,13 +29,13 @@ async fn main() -> Result<()> {
             if let Some(dir) = directory {
                 std::env::set_current_dir(dir)?;
             }
-            let session = session::Session::new(cfg)?;
+            let session = session::Session::new(cfg).await?;
             let mut app = tui::TuiApp::new(session, store);
             app.run().await?;
         }
         Some(cli::Commands::Run { prompt }) => {
             let input = prompt.join(" ");
-            let mut session = session::Session::new(cfg)?;
+            let mut session = session::Session::new(cfg).await?;
             session.prompt(&input).await?;
             println!("{}", session.last_response.trim());
         }
@@ -58,11 +59,11 @@ async fn main() -> Result<()> {
         }
         None => {
             if let Some(prompt) = &args.prompt {
-                let mut session = session::Session::new(cfg)?;
+                let mut session = session::Session::new(cfg).await?;
                 session.prompt(prompt).await?;
                 println!("{}", session.last_response.trim());
             } else {
-                let session = session::Session::new(cfg)?;
+                let session = session::Session::new(cfg).await?;
                 let mut app = tui::TuiApp::new(session, store);
                 app.run().await?;
             }
