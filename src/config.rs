@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -49,38 +49,146 @@ pub struct AgentConfig {
 }
 
 pub fn load_config() -> Result<Config> {
-    let paths = config_paths();
-    for path in &paths {
-        if path.exists() {
-            let content = std::fs::read_to_string(path)
-                .with_context(|| format!("Failed to read config: {}", path.display()))?;
-            let content = strip_jsonc_comments(&content);
-            let config: Config = serde_json::from_str(&content)
-                .with_context(|| format!("Failed to parse config: {}", path.display()))?;
-            tracing::info!("Loaded config from {}", path.display());
-            return Ok(config);
+    // Layered config merging: global -> project -> OPENCODE_CONFIG env var
+    let mut config = Config::default();
+
+    for path in layered_config_paths() {
+        if !path.exists() {
+            continue;
+        }
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let content = strip_jsonc_comments(&content);
+        match serde_json::from_str::<Config>(&content) {
+            Ok(layer) => {
+                config = merge_config(config, layer);
+                tracing::info!("Loaded config layer from {}", path.display());
+            }
+            Err(e) => {
+                tracing::warn!("Skipping config {}: {}", path.display(), e);
+            }
         }
     }
-    tracing::info!("No config found, using defaults");
-    Ok(Config::default())
+
+    // Apply environment variable overrides
+    if let Ok(val) = std::env::var("OPENCODE_MODEL") {
+        config.model = Some(val);
+    }
+    if let Ok(val) = std::env::var("OPENCODE_PROVIDER_API_KEY") {
+        if let Some(ref model) = config.model {
+            let provider_name = model.split('/').next().unwrap_or("openai");
+            config
+                .provider
+                .entry(provider_name.to_string())
+                .or_default()
+                .api_key = Some(val);
+        } else {
+            config
+                .provider
+                .entry("openai".to_string())
+                .or_default()
+                .api_key = Some(val);
+        }
+    }
+    if let Ok(val) = std::env::var("OPENCODE_PROVIDER_BASE_URL") {
+        if let Some(ref model) = config.model {
+            let provider_name = model.split('/').next().unwrap_or("openai");
+            config
+                .provider
+                .entry(provider_name.to_string())
+                .or_default()
+                .base_url = Some(val);
+        }
+    }
+    if let Ok(val) = std::env::var("OPENCODE_SHELL") {
+        config.shell = Some(val);
+    }
+    if let Ok(val) = std::env::var("OPENCODE_USERNAME") {
+        config.username = Some(val);
+    }
+    if let Ok(val) = std::env::var("OPENCODE_AUTO_APPROVE") {
+        config.permission.auto_approve = val.split(',').map(|s| s.trim().to_string()).collect();
+    }
+    if let Ok(val) = std::env::var("OPENCODE_DENY") {
+        config.permission.deny = val.split(',').map(|s| s.trim().to_string()).collect();
+    }
+
+    tracing::info!("Config loaded with layered merging and env var overrides");
+    Ok(config)
 }
 
-fn config_paths() -> Vec<PathBuf> {
+fn layered_config_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
+
+    // Global configs (lowest priority)
     if let Some(config_dir) = dirs::config_dir() {
         paths.push(config_dir.join("opencode").join("opencode.jsonc"));
         paths.push(config_dir.join("opencode").join("opencode.json"));
         paths.push(config_dir.join("opencode-rs").join("opencode.jsonc"));
         paths.push(config_dir.join("opencode-rs").join("opencode.json"));
     }
+
+    // Project-level configs (medium priority)
     if let Ok(cwd) = std::env::current_dir() {
         paths.push(cwd.join(".opencode").join("opencode.jsonc"));
         paths.push(cwd.join(".opencode").join("opencode.json"));
     }
+
+    // OPENCODE_CONFIG env var (highest file priority)
     if let Ok(path) = std::env::var("OPENCODE_CONFIG") {
         paths.push(PathBuf::from(path));
     }
+
     paths
+}
+
+fn merge_config(base: Config, overlay: Config) -> Config {
+    Config {
+        model: overlay.model.or(base.model),
+        shell: overlay.shell.or(base.shell),
+        username: overlay.username.or(base.username),
+        instructions: overlay.instructions.or(base.instructions),
+        permission: PermissionConfig {
+            auto_approve: if overlay.permission.auto_approve.is_empty() {
+                base.permission.auto_approve
+            } else {
+                overlay.permission.auto_approve
+            },
+            deny: if overlay.permission.deny.is_empty() {
+                base.permission.deny
+            } else {
+                overlay.permission.deny
+            },
+        },
+        tools: ToolsConfig {
+            enabled: if overlay.tools.enabled.is_empty() {
+                base.tools.enabled
+            } else {
+                overlay.tools.enabled
+            },
+            disabled: if overlay.tools.disabled.is_empty() {
+                base.tools.disabled
+            } else {
+                overlay.tools.disabled
+            },
+        },
+        provider: {
+            let mut merged = base.provider;
+            for (key, val) in overlay.provider {
+                merged.insert(key, val);
+            }
+            merged
+        },
+        agent: {
+            let mut merged = base.agent;
+            for (key, val) in overlay.agent {
+                merged.insert(key, val);
+            }
+            merged
+        },
+    }
 }
 
 fn strip_jsonc_comments(input: &str) -> String {

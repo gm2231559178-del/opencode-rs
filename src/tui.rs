@@ -1,13 +1,14 @@
 use crate::llm::provider::{PermissionAction, StreamEvent};
 use crate::session::Session;
 use crate::session_store::SessionStore;
+use crate::theme::Theme;
 use anyhow::Result;
 use arboard::Clipboard;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::ExecutableCommand;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Wrap};
 use ratatui::Frame;
@@ -39,6 +40,9 @@ pub struct TuiApp {
     pub plan_mode: bool,
     pub autocomplete_candidates: Vec<String>,
     pub autocomplete_idx: isize,
+    pub theme: &'static Theme,
+    pub theme_name: String,
+    pub notify: bool,
 }
 
 #[derive(Clone)]
@@ -72,6 +76,9 @@ impl TuiApp {
             plan_mode: false,
             autocomplete_candidates: Vec::new(),
             autocomplete_idx: -1,
+            theme: &crate::theme::DEFAULT,
+            theme_name: "default".to_string(),
+            notify: true,
         }
     }
 
@@ -170,6 +177,10 @@ impl TuiApp {
                         });
                     }
                     StreamEvent::Done { response } => {
+                        if self.notify {
+                            let _ = print!("\x07");
+                            let _ = io::Write::flush(&mut io::stdout());
+                        }
                         if response.is_empty() {
                             if let Some(last) = self.messages.last() {
                                 if last.role == "assistant" {
@@ -191,6 +202,10 @@ impl TuiApp {
                         done = true;
                     }
                     StreamEvent::Error { message } => {
+                        if self.notify {
+                            let _ = print!("\x07");
+                            let _ = io::Write::flush(&mut io::stdout());
+                        }
                         let updated = self.messages.iter_mut().rev().find(|m| m.role == "assistant");
                         if let Some(msg) = updated {
                             msg.content = format!("Error: {}", message);
@@ -285,7 +300,25 @@ impl TuiApp {
                     Err(_) => "Session busy, try again.".to_string(),
                 }
             }
-            "/help" => "Available commands:\n  /help          - Show this help\n  /plan          - Toggle plan mode (read-only)\n  /compact       - Compact conversation history\n  /diff          - Show diff of last file edit\n  /new           - Clear session\n  /model         - Show current model\n  /model <name>  - Switch model (e.g. /model openai/gpt-4o)\n  /agent         - Show available agents\n  /agent <name>  - Switch agent\n  /sessions      - List saved sessions\n  /session load <id>  - Load a saved session\n  /session fork       - Fork current session\n  /session delete <id> - Delete a session\n  /undo          - Undo last file change\n  /exit          - Quit OpenCode".to_string(),
+            "/notify" => {
+                self.notify = !self.notify;
+                if self.notify {
+                    "Notifications ON.".to_string()
+                } else {
+                    "Notifications OFF.".to_string()
+                }
+            }
+            "/theme" => {
+                let names = ["default", "tokyonight", "catppuccin", "gruvbox", "dracula", "nord", "onedark"];
+                format!("Current theme: {}\nAvailable: {}", self.theme_name, names.join(", "))
+            }
+            cmd if cmd.starts_with("/theme ") => {
+                let name = cmd.splitn(2, ' ').nth(1).unwrap_or("").trim().to_string();
+                self.theme = Theme::by_name(&name);
+                self.theme_name = self.theme.name.to_string();
+                format!("Switched to theme: {}", self.theme.name)
+            }
+            "/help" => "Available commands:\n  /help          - Show this help\n  /plan          - Toggle plan mode (read-only)\n  /compact       - Compact conversation history\n  /diff          - Show diff of last file edit\n  /theme         - Show current theme\n  /theme <name>  - Switch theme\n  /notify        - Toggle notification bell\n  /new           - Clear session\n  /model         - Show current model\n  /model <name>  - Switch model (e.g. /model openai/gpt-4o)\n  /agent         - Show available agents\n  /agent <name>  - Switch agent\n  /sessions      - List saved sessions\n  /session load <id>  - Load a saved session\n  /session fork       - Fork current session\n  /session delete <id> - Delete a session\n  /undo          - Undo last file change\n  /exit          - Quit OpenCode".to_string(),
             "/new" | "/clear" => self.cmd_clear_session(),
             "/models" => self.cmd_show_model(),
             "/model" => self.cmd_show_model(),
@@ -716,21 +749,22 @@ impl TuiApp {
 
     fn render_status(&self, f: &mut Frame, area: Rect) {
         let status = if self.streaming { "streaming" } else { "idle" };
+        let t = self.theme;
         let mode_tag = if self.plan_mode {
             Span::styled(
                 " PLAN ",
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                Style::default().fg(t.warning).add_modifier(Modifier::BOLD),
             )
         } else {
             Span::raw("")
         };
         let left = Span::styled(
             format!(" {} ", self.model_name),
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default().fg(t.primary).add_modifier(Modifier::BOLD),
         );
         let right = Span::styled(
-            format!(" prompts:{} | {} ", self.prompt_count, status),
-            Style::default().fg(if self.streaming { Color::Green } else { Color::DarkGray }),
+            format!(" {}:{} | {} ", self.theme_name, self.prompt_count, status),
+            Style::default().fg(if self.streaming { t.success } else { t.dim }),
         );
         let mut spans = vec![left, Span::raw(" │ "), right];
         if self.plan_mode {
@@ -745,6 +779,7 @@ impl TuiApp {
     }
 
     fn render_messages(&self, f: &mut Frame, area: Rect) {
+        let t = self.theme;
         let items: Vec<ListItem> = self
             .messages
             .iter()
@@ -752,11 +787,11 @@ impl TuiApp {
             .skip(self.scroll)
             .map(|m| {
                 let style = match m.role.as_str() {
-                    "user" => Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-                    "assistant" => Style::default().fg(Color::Green),
-                    "tool_call" => Style::default().fg(Color::Yellow).add_modifier(Modifier::DIM),
-                    "tool_result" => Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
-                    _ => Style::default(),
+                    "user" => Style::default().fg(t.user_msg).add_modifier(Modifier::BOLD),
+                    "assistant" => Style::default().fg(t.assistant_msg),
+                    "tool_call" => Style::default().fg(t.tool_call).add_modifier(Modifier::DIM),
+                    "tool_result" => Style::default().fg(t.tool_result).add_modifier(Modifier::DIM),
+                    _ => Style::default().fg(t.text),
                 };
                 let label = match m.role.as_str() {
                     "tool_call" => "tool".to_string(),
@@ -780,6 +815,7 @@ impl TuiApp {
     }
 
     fn render_input(&self, f: &mut Frame, area: Rect) {
+        let t = self.theme;
         let title = if self.pending_perm.is_some() {
             " Approve? (y=allow / n=deny) ".to_string()
         } else if !self.autocomplete_candidates.is_empty() {
@@ -802,7 +838,7 @@ impl TuiApp {
             )
         };
         let input = Paragraph::new(self.input.as_str())
-            .style(Style::default().fg(Color::White))
+            .style(Style::default().fg(t.text))
             .block(Block::default().borders(Borders::ALL).title(title))
             .wrap(Wrap { trim: true });
 

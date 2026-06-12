@@ -1,0 +1,167 @@
+use ratatui::style::Color;
+
+pub struct Theme {
+    pub name: &'static str,
+    pub primary: Color,
+    pub secondary: Color,
+    pub accent: Color,
+    pub success: Color,
+    pub warning: Color,
+    pub error: Color,
+    pub dim: Color,
+    pub bg: Color,
+    pub text: Color,
+    pub text_dim: Color,
+    pub border: Color,
+    pub user_msg: Color,
+    pub assistant_msg: Color,
+    pub tool_call: Color,
+    pub tool_result: Color,
+}
+
+impl Theme {
+    pub fn by_name(name: &str) -> &'static Theme {
+        match name {
+            "tokyonight" => &TOKYONIGHT,
+            "catppuccin" => &CATPPUCCIN,
+            "gruvbox" => &GRUVBOX,
+            "dracula" => &DRACULA,
+            "nord" => &NORD,
+            "onedark" => &ONEDARK,
+            _ => &DEFAULT,
+        }
+    }
+}
+
+pub const DEFAULT: Theme = Theme {
+    name: "default",
+    primary: Color::Cyan,
+    secondary: Color::Blue,
+    accent: Color::Magenta,
+    success: Color::Green,
+    warning: Color::Yellow,
+    error: Color::Red,
+    dim: Color::DarkGray,
+    bg: Color::Reset,
+    text: Color::White,
+    text_dim: Color::DarkGray,
+    border: Color::Gray,
+    user_msg: Color::Cyan,
+    assistant_msg: Color::Green,
+    tool_call: Color::Yellow,
+    tool_result: Color::DarkGray,
+};
+
+pub const TOKYONIGHT: Theme = Theme {
+    name: "tokyonight",
+    primary: Color::Rgb(125, 143, 255),
+    secondary: Color::Rgb(86, 108, 214),
+    accent: Color::Rgb(173, 108, 244),
+    success: Color::Rgb(159, 214, 114),
+    warning: Color::Rgb(224, 175, 104),
+    error: Color::Rgb(224, 83, 98),
+    dim: Color::Rgb(68, 77, 109),
+    bg: Color::Rgb(31, 35, 53),
+    text: Color::Rgb(192, 202, 245),
+    text_dim: Color::Rgb(86, 95, 137),
+    border: Color::Rgb(68, 77, 109),
+    user_msg: Color::Rgb(125, 143, 255),
+    assistant_msg: Color::Rgb(159, 214, 114),
+    tool_call: Color::Rgb(224, 175, 104),
+    tool_result: Color::Rgb(86, 95, 137),
+};
+
+pub const CATPPUCCIN: Theme = Theme {
+    name: "catppuccin",
+    primary: Color::Rgb(137, 180, 250),
+    secondary: Color::Rgb(116, 155, 229),
+    accent: Color::Rgb(203, 166, 247),
+    success: Color::Rgb(166, 227, 161),
+    warning: Color::Rgb(249, 226, 175),
+    error: Color::Rgb(243, 139, 168),
+    dim: Color::Rgb(108, 112, 134),
+    bg: Color::Rgb(30, 30, 46),
+    text: Color::Rgb(205, 214, 244),
+    text_dim: Color::Rgb(108, 112, 134),
+    border: Color::Rgb(69, 71, 90),
+    user_msg: Color::Rgb(137, 180, 250),
+    assistant_msg: Color::Rgb(166, 227, 161),
+    tool_call: Color::Rgb(249, 226, 175),
+    tool_result: Color::Rgb(108, 112, 134),
+};
+
+pub const GRUVBOX: Theme = Theme {
+    name: "gruvbox",
+    primary: Color::Rgb(131, 165, 152),
+    secondary: Color::Rgb(69, 133, 136),
+    accent: Color::Rgb(211, 134, 155),
+    success: Color::Rgb(184, 187, 38),
+    warning: Color::Rgb(214, 157, 33),
+    error: Color::Rgb(251, 73, 52),
+    dim: Color::Rgb(124, 111, 100),
+    bg: Color::Rgb(40, 40, 40),
+    text: Color::Rgb(235, 219, 178),
+    text_dim: Color::Rgb(124, 111, 100),
+    border: Color::Rgb(80, 73, 69),
+    user_msg: Color::Rgb(131, 165, 152),
+    assistant_msg: Color::Rgb(184, 187, 38),
+    tool_call: Color::Rgb(214, 157, 33),
+    tool_result: Color::Rgb(124, 111, 100),
+};
+
+pub const DRACULA: Theme = Theme {
+    name: "dracula",
+    primary: Color::Rgb(189, 147, 249),
+    secondary: Color::Rgb(139, 143, 255),
+    accent: Color::Rgb(255, 121, 198),
+    success: Color::Rgb(80, 250, 123),
+    warning: Color::Rgb(255, 184, 108),
+    error: Color::Rgb(255, 85, 85),
+    dim: Color::Rgb(98, 114, 164),
+    bg: Color::Rgb(40, 42, 54),
+    text: Color::Rgb(248, 248, 242),
+    text_dim: Color::Rgb(98, 114, 164),
+    border: Color::Rgb(68, 71, 90),
+    user_msg: Color::Rgb(189, 147, 249),
+    assistant_msg: Color::Rgb(80, 250, 123),
+    tool_call: Color::Rgb(255, 184, 108),
+    tool_result: Color::Rgb(98, 114, 164),
+};
+
+pub const NORD: Theme = Theme {
+    name: "nord",
+    primary: Color::Rgb(136, 192, 208),
+    secondary: Color::Rgb(129, 161, 193),
+    accent: Color::Rgb(180, 142, 173),
+    success: Color::Rgb(163, 190, 140),
+    warning: Color::Rgb(208, 135, 112),
+    error: Color::Rgb(191, 97, 106),
+    dim: Color::Rgb(76, 86, 106),
+    bg: Color::Rgb(46, 52, 64),
+    text: Color::Rgb(216, 222, 233),
+    text_dim: Color::Rgb(76, 86, 106),
+    border: Color::Rgb(67, 76, 94),
+    user_msg: Color::Rgb(136, 192, 208),
+    assistant_msg: Color::Rgb(163, 190, 140),
+    tool_call: Color::Rgb(208, 135, 112),
+    tool_result: Color::Rgb(76, 86, 106),
+};
+
+pub const ONEDARK: Theme = Theme {
+    name: "onedark",
+    primary: Color::Rgb(97, 175, 239),
+    secondary: Color::Rgb(198, 120, 221),
+    accent: Color::Rgb(224, 108, 117),
+    success: Color::Rgb(152, 195, 121),
+    warning: Color::Rgb(229, 192, 123),
+    error: Color::Rgb(224, 108, 117),
+    dim: Color::Rgb(92, 99, 112),
+    bg: Color::Rgb(40, 44, 52),
+    text: Color::Rgb(171, 178, 191),
+    text_dim: Color::Rgb(92, 99, 112),
+    border: Color::Rgb(60, 64, 72),
+    user_msg: Color::Rgb(97, 175, 239),
+    assistant_msg: Color::Rgb(152, 195, 121),
+    tool_call: Color::Rgb(229, 192, 123),
+    tool_result: Color::Rgb(92, 99, 112),
+};

@@ -4,6 +4,7 @@ mod llm;
 mod log;
 mod session;
 mod session_store;
+mod theme;
 mod tools;
 mod tui;
 
