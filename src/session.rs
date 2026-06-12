@@ -34,6 +34,15 @@ pub struct UndoEntry {
     pub original_content: Option<String>,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct UsageStats {
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+    pub total_tokens: u64,
+    pub prompt_count: u64,
+    pub tool_call_count: u64,
+}
+
 pub struct Session {
     pub id: String,
     pub messages: Vec<Message>,
@@ -46,6 +55,7 @@ pub struct Session {
     pub last_response: String,
     pub snapshots: Vec<UndoEntry>,
     pub plan_mode: bool,
+    pub stats: UsageStats,
 }
 
 impl Session {
@@ -87,6 +97,7 @@ impl Session {
             system_prompt,
             cwd,
             plan_mode: false,
+            stats: UsageStats::default(),
         })
     }
 
@@ -94,6 +105,7 @@ impl Session {
         info!(input_len = %input.len(), "prompt (non-streaming): start");
         debug!(input = %input, "prompt (non-streaming)");
 
+        self.stats.prompt_count += 1;
         self.validate_messages();
 
         self.messages.push(Message {
@@ -136,6 +148,14 @@ impl Session {
                 "loop_: sending LLM request"
             );
             let response = self.provider.generate(&request).await?;
+            if let Some(u) = &response.usage {
+                self.stats.prompt_tokens += u.prompt_tokens as u64;
+                self.stats.completion_tokens += u.completion_tokens as u64;
+                self.stats.total_tokens += (u.prompt_tokens + u.completion_tokens) as u64;
+            }
+
+            self.stats.tool_call_count += response.tool_calls.len() as u64;
+
             info!(
                 content_len = %response.content.len(),
                 tool_call_count = %response.tool_calls.len(),
@@ -233,6 +253,8 @@ impl Session {
             };
         }
 
+        self.stats.prompt_count += 1;
+
         let max_iterations = 50;
         for iter in 0..max_iterations {
             if cancelled.load(Ordering::SeqCst) {
@@ -312,7 +334,8 @@ impl Session {
                         }
                     }
                     LLMEvent::Finish {
-                        finish_reason: fr, ..
+                        finish_reason: fr,
+                        usage,
                     } => {
                         info!(
                             reason = ?fr,
@@ -320,6 +343,11 @@ impl Session {
                             tool_call_count = %tool_calls.len(),
                             "prompt_stream: LLM finish"
                         );
+                        if let Some(u) = usage {
+                            self.stats.prompt_tokens += u.prompt_tokens as u64;
+                            self.stats.completion_tokens += u.completion_tokens as u64;
+                            self.stats.total_tokens += (u.prompt_tokens + u.completion_tokens) as u64;
+                        }
                         finish_reason = fr;
                     }
                     LLMEvent::Error { message } => {
@@ -429,6 +457,8 @@ impl Session {
                         }
                     };
 
+                    self.stats.tool_call_count += 1;
+
                     if allowed {
                         self.snapshot_before_tool(tc);
                     }
@@ -468,8 +498,6 @@ impl Session {
                 }
 
             continue;
-
-            break;
         }
     }
 

@@ -294,6 +294,64 @@ impl TuiApp {
                     Err(_) => "Session busy, try again.".to_string(),
                 }
             }
+            "/share" => {
+                if let Some(store) = &self.store {
+                    if let Ok(session) = self.session.try_lock() {
+                        match store.share_session(&session.id) {
+                            Ok(info) => format!("Session shared!\nID + Secret:\n{}", info),
+                            Err(e) => format!("Share failed: {}", e),
+                        }
+                    } else {
+                        "Session busy.".to_string()
+                    }
+                } else {
+                    "Session store not available.".to_string()
+                }
+            }
+            cmd if cmd.starts_with("/share import ") => {
+                let parts: Vec<&str> = cmd.splitn(4, ' ').collect();
+                if parts.len() < 4 {
+                    "Usage: /share import <share_id> <secret>".to_string()
+                } else if let Some(store) = &self.store {
+                    match store.import_shared_session(parts[2], parts[3]) {
+                        Ok(session_id) => format!("Imported as session: {}", &session_id[..8]),
+                        Err(e) => format!("Import failed: {}", e),
+                    }
+                } else {
+                    "Session store not available.".to_string()
+                }
+            }
+            "/share list" => {
+                if let Some(store) = &self.store {
+                    match store.list_shares() {
+                        Ok(shares) if shares.is_empty() => "No shared sessions.".to_string(),
+                        Ok(shares) => {
+                            let mut out = "Shared sessions:\n".to_string();
+                            for s in &shares {
+                                out.push_str(&format!(
+                                    "  {} | {} | {}\n",
+                                    &s.id[..8], s.model, s.created_at
+                                ));
+                            }
+                            out
+                        }
+                        Err(e) => format!("Error: {}", e),
+                    }
+                } else {
+                    "Session store not available.".to_string()
+                }
+            }
+            "/stats" => {
+                if let Ok(session) = self.session.try_lock() {
+                    let s = &session.stats;
+                    format!(
+                        "Usage stats:\n  Prompts:       {}\n  Tool calls:    {}\n  Prompt tokens: {}\n  Completion tk: {}\n  Total tokens:  {}",
+                        s.prompt_count, s.tool_call_count, s.prompt_tokens, s.completion_tokens, s.total_tokens
+                    )
+                } else {
+                    "Session busy.".to_string()
+                }
+            }
             "/diff" => {
                 match self.session.try_lock() {
                     Ok(s) => s.show_diff(),
@@ -318,7 +376,7 @@ impl TuiApp {
                 self.theme_name = self.theme.name.to_string();
                 format!("Switched to theme: {}", self.theme.name)
             }
-            "/help" => "Available commands:\n  /help          - Show this help\n  /plan          - Toggle plan mode (read-only)\n  /compact       - Compact conversation history\n  /diff          - Show diff of last file edit\n  /theme         - Show current theme\n  /theme <name>  - Switch theme\n  /notify        - Toggle notification bell\n  /new           - Clear session\n  /model         - Show current model\n  /model <name>  - Switch model (e.g. /model openai/gpt-4o)\n  /agent         - Show available agents\n  /agent <name>  - Switch agent\n  /sessions      - List saved sessions\n  /session load <id>  - Load a saved session\n  /session fork       - Fork current session\n  /session delete <id> - Delete a session\n  /undo          - Undo last file change\n  /exit          - Quit OpenCode".to_string(),
+            "/help" => "Available commands:\n  /help          - Show this help\n  /plan          - Toggle plan mode (read-only)\n  /compact       - Compact conversation history\n  /diff          - Show diff of last file edit\n  /theme         - Show current theme\n  /theme <name>  - Switch theme\n  /notify        - Toggle notification bell\n  /new           - Clear session\n  /model         - Show current model\n  /model <name>  - Switch model (e.g. /model openai/gpt-4o)\n  /agent         - Show available agents\n  /agent <name>  - Switch agent\n  /sessions      - List saved sessions\n  /session load <id>  - Load a saved session\n  /session fork       - Fork current session\n  /session delete <id> - Delete a session\n  /undo          - Undo last file change\n  /share         - Generate share link for this session\n  /share list    - List shared sessions\n  /share import <id> <secret> - Import a shared session\n  /stats         - Show usage statistics\n  /exit          - Quit OpenCode".to_string(),
             "/new" | "/clear" => self.cmd_clear_session(),
             "/models" => self.cmd_show_model(),
             "/model" => self.cmd_show_model(),
