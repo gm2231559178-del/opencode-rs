@@ -28,3 +28,4 @@ async-trait = "0.1"
 regex = "1"
 textwrap = "0.16"
 rusqlite = { version = "0.40.1", features = ["bundled"] }
+arboard = "3.6.1"

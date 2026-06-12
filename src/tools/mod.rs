@@ -6,14 +6,17 @@ pub mod read;
 pub mod task;
 pub mod write;
 
+use crate::config::Config;
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
+use std::sync::Arc;
 
 pub struct ToolContext {
     pub session_id: String,
     pub message_id: String,
     pub cwd: String,
+    pub config: Option<Arc<Config>>,
 }
 
 #[derive(Debug, Clone)]

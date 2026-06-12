@@ -45,6 +45,7 @@ pub struct Session {
     pub cwd: String,
     pub last_response: String,
     pub snapshots: Vec<UndoEntry>,
+    pub plan_mode: bool,
 }
 
 impl Session {
@@ -85,6 +86,7 @@ impl Session {
             snapshots: Vec::new(),
             system_prompt,
             cwd,
+            plan_mode: false,
         })
     }
 
@@ -192,6 +194,12 @@ impl Session {
     }
 
     fn tool_permission(&self, name: &str) -> PermissionAction {
+        if self.plan_mode {
+            match name {
+                "bash" | "write" | "edit" => return PermissionAction::Deny,
+                _ => return PermissionAction::Allow,
+            }
+        }
         match name {
             "bash" | "write" | "edit" => PermissionAction::Ask,
             _ => PermissionAction::Allow,
@@ -496,6 +504,69 @@ impl Session {
         }
     }
 
+    pub fn show_diff(&self) -> String {
+        let entry = match self.snapshots.last() {
+            Some(e) => e,
+            None => return "No edits to diff.".to_string(),
+        };
+        let old = match &entry.original_content {
+            Some(c) => c.clone(),
+            None => return format!("Diff for new file: {}", entry.file_path),
+        };
+        let new = match std::fs::read_to_string(&entry.file_path) {
+            Ok(c) => c,
+            Err(e) => return format!("Cannot read file: {}", e),
+        };
+        if old == new {
+            return format!("No changes to {}", entry.file_path);
+        }
+        let mut out = format!("--- a/{}\n+++ b/{}\n", entry.file_path, entry.file_path);
+        let old_lines: Vec<&str> = old.lines().collect();
+        let new_lines: Vec<&str> = new.lines().collect();
+        let mut i = 0;
+        let mut j = 0;
+
+        // Simple Myers-like diff: walk lines, output +/- prefix
+        while i < old_lines.len() || j < new_lines.len() {
+            if i < old_lines.len() && j < new_lines.len() && old_lines[i] == new_lines[j] {
+                out.push_str(&format!(" {}\n", old_lines[i]));
+                i += 1;
+                j += 1;
+            } else if i < old_lines.len() && j < new_lines.len() {
+                out.push_str(&format!("-{}\n+{}\n", old_lines[i], new_lines[j]));
+                i += 1;
+                j += 1;
+            } else if i < old_lines.len() {
+                out.push_str(&format!("-{}\n", old_lines[i]));
+                i += 1;
+            } else {
+                out.push_str(&format!("+{}\n", new_lines[j]));
+                j += 1;
+            }
+        }
+        out
+    }
+
+    pub fn compact_messages(&mut self) -> usize {
+        let before = self.messages.len();
+        // Find the last assistant+tools block and keep everything from there.
+        // Drop older tool results that are no longer needed.
+        let mut last_assistant_with_tools = None;
+        for (i, msg) in self.messages.iter().enumerate().rev() {
+            if msg.role == Role::Assistant {
+                let has_tc = msg.content.iter().any(|p| matches!(p, ContentPart::ToolCall { .. }));
+                if has_tc {
+                    last_assistant_with_tools = Some(i);
+                    break;
+                }
+            }
+        }
+        if let Some(pivot) = last_assistant_with_tools {
+            self.messages.drain(..pivot);
+        }
+        before - self.messages.len()
+    }
+
     fn validate_messages(&mut self) {
         // Remove incomplete tool-call turns that would cause 400 errors.
         // An assistant(tool_calls) must be followed by tool results for each call_id.
@@ -544,6 +615,7 @@ impl Session {
                     session_id: self.id.clone(),
                     message_id: String::new(),
                     cwd: self.cwd.clone(),
+                    config: Some(self.config.clone()),
                 };
                 let result = t.execute(tc.arguments.clone(), &ctx).await;
                 match &result {

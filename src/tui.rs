@@ -2,6 +2,7 @@ use crate::llm::provider::{PermissionAction, StreamEvent};
 use crate::session::Session;
 use crate::session_store::SessionStore;
 use anyhow::Result;
+use arboard::Clipboard;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::ExecutableCommand;
@@ -35,6 +36,9 @@ pub struct TuiApp {
     pub perm_tx: mpsc::UnboundedSender<(String, PermissionAction)>,
     pub pending_perm: Option<String>,
     pub store: Option<SessionStore>,
+    pub plan_mode: bool,
+    pub autocomplete_candidates: Vec<String>,
+    pub autocomplete_idx: isize,
 }
 
 #[derive(Clone)]
@@ -65,6 +69,9 @@ impl TuiApp {
             perm_tx: mpsc::unbounded_channel().0,
             pending_perm: None,
             store,
+            plan_mode: false,
+            autocomplete_candidates: Vec::new(),
+            autocomplete_idx: -1,
         }
     }
 
@@ -222,22 +229,39 @@ impl TuiApp {
 
     fn handle_slash(&mut self, cmd: &str) {
         let response = match cmd {
-            "/sessions" => {
-                match &self.store {
-                    Some(store) => match store.list_sessions(10) {
-                        Ok(sessions) if sessions.is_empty() => "No saved sessions.".to_string(),
-                        Ok(sessions) => {
-                            let mut out = String::from("Recent sessions:\n");
-                            for s in &sessions {
-                                let preview = if s.id.len() > 8 { &s.id[..8] } else { &s.id };
-                                out.push_str(&format!("  {} | {} | {} msgs | {}\n",
-                                    preview, s.model, s.message_count, s.updated_at));
-                            }
-                            out
-                        }
-                        Err(e) => format!("Error: {}", e),
-                    },
-                    None => "Session store not available.".to_string(),
+            "/sessions" => self.cmd_list_sessions(10),
+            "/session load" | "/session continue" => {
+                "Usage: /session load <session_id>".to_string()
+            }
+            cmd if cmd.starts_with("/session load ") || cmd.starts_with("/session continue ") => {
+                let id = cmd.splitn(3, ' ').nth(2).unwrap_or("").trim();
+                self.cmd_load_session(id)
+            }
+            cmd if cmd.starts_with("/session delete ") => {
+                let id = cmd.splitn(3, ' ').nth(2).unwrap_or("").trim();
+                self.cmd_delete_session(id)
+            }
+            "/session fork" => self.cmd_fork_session(),
+            "/session new" => {
+                self.cmd_clear_session();
+                if let Ok(mut s) = self.session.try_lock() {
+                    s.id = uuid::Uuid::new_v4().to_string();
+                }
+                "New session created.".to_string()
+            }
+            "/plan" => {
+                self.plan_mode = !self.plan_mode;
+                if let Ok(mut s) = self.session.try_lock() {
+                    s.plan_mode = self.plan_mode;
+                    if self.plan_mode {
+                        let plan_instructions = "You are in PLAN MODE. Do NOT execute any commands or make any edits. Your job is only to read files, explore the codebase, and produce a detailed plan. Do not use bash, write, or edit tools.";
+                        s.system_prompt = format!("{}\n\n{}", s.system_prompt, plan_instructions);
+                    }
+                }
+                if self.plan_mode {
+                    "Plan mode ON — only read tools allowed. Tab to toggle.".to_string()
+                } else {
+                    "Plan mode OFF.".to_string()
                 }
             }
             "/undo" => {
@@ -246,13 +270,34 @@ impl TuiApp {
                     Err(_) => "Session busy, try again.".to_string(),
                 }
             }
-            "/help" => "Available commands:\n  /help   - Show this help\n  /new    - Clear session\n  /models - Show current model\n  /sessions - List saved sessions\n  /undo   - Undo last file change\n  /exit   - Quit OpenCode".to_string(),
-            "/new" | "/clear" => {
-                self.messages.clear();
-                self.prompt_count = 0;
-                "Session cleared.".to_string()
+            "/compact" => {
+                match self.session.try_lock() {
+                    Ok(mut s) => {
+                        let removed = s.compact_messages();
+                        format!("Compacted: removed {} old messages.", removed)
+                    }
+                    Err(_) => "Session busy, try again.".to_string(),
+                }
             }
-            "/models" => format!("Current model: {}", self.model_name),
+            "/diff" => {
+                match self.session.try_lock() {
+                    Ok(s) => s.show_diff(),
+                    Err(_) => "Session busy, try again.".to_string(),
+                }
+            }
+            "/help" => "Available commands:\n  /help          - Show this help\n  /plan          - Toggle plan mode (read-only)\n  /compact       - Compact conversation history\n  /diff          - Show diff of last file edit\n  /new           - Clear session\n  /model         - Show current model\n  /model <name>  - Switch model (e.g. /model openai/gpt-4o)\n  /agent         - Show available agents\n  /agent <name>  - Switch agent\n  /sessions      - List saved sessions\n  /session load <id>  - Load a saved session\n  /session fork       - Fork current session\n  /session delete <id> - Delete a session\n  /undo          - Undo last file change\n  /exit          - Quit OpenCode".to_string(),
+            "/new" | "/clear" => self.cmd_clear_session(),
+            "/models" => self.cmd_show_model(),
+            "/model" => self.cmd_show_model(),
+            cmd if cmd.starts_with("/model ") => {
+                let name = cmd.splitn(2, ' ').nth(1).unwrap_or("").trim().to_string();
+                self.cmd_set_model(name)
+            }
+            "/agent" => self.cmd_list_agents(),
+            cmd if cmd.starts_with("/agent ") => {
+                let name = cmd.splitn(2, ' ').nth(1).unwrap_or("").trim().to_string();
+                self.cmd_set_agent(name)
+            }
             "/exit" | "/quit" | "/q" => {
                 self.quit = true;
                 String::new()
@@ -267,6 +312,232 @@ impl TuiApp {
         }
     }
 
+    fn cmd_list_sessions(&self, limit: usize) -> String {
+        match &self.store {
+            Some(store) => match store.list_sessions(limit) {
+                Ok(sessions) if sessions.is_empty() => "No saved sessions.".to_string(),
+                Ok(sessions) => {
+                    let mut out = String::from("Recent sessions:\n");
+                    for s in &sessions {
+                        let preview = if s.id.len() > 8 { &s.id[..8] } else { &s.id };
+                        out.push_str(&format!("  {} | {} | {} msgs | {}\n",
+                            preview, s.model, s.message_count, s.updated_at));
+                    }
+                    out.push_str(&format!("\nUse /session load <id> to continue a session."));
+                    out
+                }
+                Err(e) => format!("Error: {}", e),
+            },
+            None => "Session store not available.".to_string(),
+        }
+    }
+
+    fn cmd_load_session(&mut self, id: &str) -> String {
+        let store = match &self.store {
+            Some(s) => s,
+            None => return "Session store not available.".to_string(),
+        };
+        match store.load_session(id) {
+            Ok(Some((_model, _system_prompt, _cwd, messages))) => {
+                let n = messages.len();
+                if let Ok(mut session) = self.session.try_lock() {
+                    session.messages = messages;
+                }
+                self.messages.clear();
+                self.prompt_count = 0;
+                format!("Session {} loaded with {} messages.", id, n)
+            }
+            Ok(None) => format!("Session '{}' not found.", id),
+            Err(e) => format!("Error loading session: {}", e),
+        }
+    }
+
+    fn cmd_delete_session(&self, id: &str) -> String {
+        let store = match &self.store {
+            Some(s) => s,
+            None => return "Session store not available.".to_string(),
+        };
+        match store.delete_session(id) {
+            Ok(()) => format!("Session {} deleted.", id),
+            Err(e) => format!("Error deleting session: {}", e),
+        }
+    }
+
+    fn cmd_fork_session(&self) -> String {
+        let new_id = uuid::Uuid::new_v4().to_string();
+        if let Some(store) = &self.store {
+            if let Ok(session) = self.session.try_lock() {
+                let _ = store.save_session(
+                    &new_id,
+                    &session.model,
+                    &session.system_prompt,
+                    &session.cwd,
+                    &session.messages,
+                );
+            }
+        }
+        format!("Forked as session {}", &new_id[..8])
+    }
+
+    fn cmd_clear_session(&mut self) -> String {
+        self.messages.clear();
+        self.prompt_count = 0;
+        "Session cleared.".to_string()
+    }
+
+    fn cmd_show_model(&self) -> String {
+        format!("Current model: {}\n\nAvailable providers: openai, anthropic, openrouter, groq, opencode\nSwitch with: /model <provider/model_id>", self.model_name)
+    }
+
+    fn cmd_set_model(&mut self, name: String) -> String {
+        if name.is_empty() {
+            return self.cmd_show_model();
+        }
+        if let Ok(mut session) = self.session.try_lock() {
+            session.model = name.clone();
+            self.model_name = name.clone();
+            format!("Switched to model: {}", name)
+        } else {
+            "Session busy, try again.".to_string()
+        }
+    }
+
+    fn cmd_list_agents(&self) -> String {
+        if let Ok(session) = self.session.try_lock() {
+            let mut out = String::from("Available agents:\n");
+            for (name, _cfg) in &session.config.agent {
+                out.push_str(&format!("  - {}\n", name));
+            }
+            if out == "Available agents:\n" {
+                out.push_str("  (none configured)\n");
+            }
+            out.push_str("\nSwitch with: /agent <name>");
+            out
+        } else {
+            "Session busy.".to_string()
+        }
+    }
+
+    fn cmd_set_agent(&mut self, name: String) -> String {
+        if name.is_empty() {
+            return self.cmd_list_agents();
+        }
+        if let Ok(mut session) = self.session.try_lock() {
+            let cfg = session.config.agent.get(&name).cloned();
+            match cfg {
+                Some(cfg) => {
+                    if let Some(model) = &cfg.model {
+                        session.model = model.clone();
+                        self.model_name = model.clone();
+                    }
+                    if let Some(instructions) = &cfg.instructions {
+                        session.system_prompt = instructions.join("\n");
+                    }
+                    format!("Switched to agent: {}", name)
+                }
+                None => format!("Agent '{}' not found. Use /agent to list available agents.", name),
+            }
+        } else {
+            "Session busy, try again.".to_string()
+        }
+    }
+
+    fn copy_last_response(&mut self) {
+        let last = self.messages.iter().rev().find(|m| m.role == "assistant");
+        match last {
+            Some(msg) if !msg.content.is_empty() => {
+                match Clipboard::new() {
+                    Ok(mut ctx) => {
+                        if ctx.set_text(msg.content.clone()).is_ok() {
+                            self.messages.push(TuiMessage {
+                                role: "assistant".to_string(),
+                                content: "Last response copied to clipboard.".to_string(),
+                            });
+                        } else {
+                            self.messages.push(TuiMessage {
+                                role: "assistant".to_string(),
+                                content: "Failed to copy to clipboard.".to_string(),
+                            });
+                        }
+                    }
+                    Err(_) => {
+                        self.messages.push(TuiMessage {
+                            role: "assistant".to_string(),
+                            content: "Clipboard not available.".to_string(),
+                        });
+                    }
+                }
+            }
+            _ => {
+                self.messages.push(TuiMessage {
+                    role: "assistant".to_string(),
+                    content: "No response to copy.".to_string(),
+                });
+            }
+        }
+    }
+
+    fn trigger_autocomplete(&mut self) {
+        // Find the last @ in input text after cursor
+        let before_cursor = &self.input[..self.cursor];
+        let at_pos = before_cursor.rfind('@');
+        match at_pos {
+            Some(pos) => {
+                let query = before_cursor[pos + 1..].to_string();
+                // Search for files matching query
+                let pattern = if query.is_empty() {
+                    "*".to_string()
+                } else {
+                    format!("*{}*", query)
+                };
+                let mut cmd = std::process::Command::new("fd");
+                cmd.arg("--glob").arg(&pattern).arg("--max-results").arg("20");
+                if let Ok(session) = self.session.try_lock() {
+                    cmd.current_dir(&session.cwd);
+                }
+                let output = cmd.output().ok();
+                let mut candidates: Vec<String> = output
+                    .and_then(|o| String::from_utf8(o.stdout).ok())
+                    .map(|s| s.lines().map(|l| l.to_string()).collect())
+                    .unwrap_or_default();
+                // Sort by proximity to query
+                if !query.is_empty() {
+                    candidates.sort_by_key(|c| c.to_lowercase().find(&query.to_lowercase()));
+                }
+                self.autocomplete_candidates = candidates;
+                self.autocomplete_idx = if self.autocomplete_candidates.is_empty() {
+                    -1
+                } else {
+                    0
+                };
+            }
+            None => {
+                self.autocomplete_candidates.clear();
+                self.autocomplete_idx = -1;
+            }
+        }
+    }
+
+    fn apply_autocomplete(&mut self) -> bool {
+        if self.autocomplete_idx < 0 || self.autocomplete_idx as usize >= self.autocomplete_candidates.len() {
+            return false;
+        }
+        let selected = &self.autocomplete_candidates[self.autocomplete_idx as usize];
+        let before_cursor = &self.input[..self.cursor];
+        if let Some(at_pos) = before_cursor.rfind('@') {
+            // Replace from @ to cursor with the selected file path
+            let after_cursor = &self.input[self.cursor..];
+            let replacement = format!("{} ", selected);
+            let new_input = format!("{}{}{}", &self.input[..at_pos], replacement, after_cursor);
+            let new_cursor = at_pos + replacement.len();
+            self.input = new_input;
+            self.cursor = new_cursor;
+        }
+        self.autocomplete_candidates.clear();
+        self.autocomplete_idx = -1;
+        true
+    }
+
     async fn handle_key(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
         match key.code {
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
@@ -278,11 +549,34 @@ impl TuiApp {
             KeyCode::Esc if self.streaming => {
                 self.cancelled.store(true, Ordering::SeqCst);
             }
+            KeyCode::Esc if !self.autocomplete_candidates.is_empty() => {
+                self.autocomplete_candidates.clear();
+                self.autocomplete_idx = -1;
+            }
+            KeyCode::Char('y') if key.modifiers.contains(KeyModifiers::CONTROL) && !self.streaming => {
+                self.copy_last_response();
+            }
+            KeyCode::Tab if !self.autocomplete_candidates.is_empty() => {
+                if key.modifiers.contains(KeyModifiers::SHIFT) {
+                    self.autocomplete_idx = if self.autocomplete_idx <= 0 {
+                        self.autocomplete_candidates.len() as isize - 1
+                    } else {
+                        self.autocomplete_idx - 1
+                    };
+                } else {
+                    self.autocomplete_idx = (self.autocomplete_idx + 1) % self.autocomplete_candidates.len() as isize;
+                }
+            }
+            KeyCode::Enter if !self.autocomplete_candidates.is_empty() => {
+                self.apply_autocomplete();
+            }
             KeyCode::Enter if !self.streaming && !key.modifiers.contains(KeyModifiers::SHIFT) => {
                 self.cancelled.store(false, Ordering::SeqCst);
                 let input = std::mem::take(&mut self.input);
                 self.cursor = 0;
                 let msg = input.trim().to_string();
+                self.autocomplete_candidates.clear();
+                self.autocomplete_idx = -1;
                 if !msg.is_empty() {
                     self.input_history.push(msg.clone());
                     self.history_index = -1;
@@ -346,11 +640,19 @@ impl TuiApp {
             KeyCode::Char(c) => {
                 self.input.insert(self.cursor, c);
                 self.cursor += 1;
+                if c == '@' {
+                    self.trigger_autocomplete();
+                } else if !self.autocomplete_candidates.is_empty() {
+                    self.trigger_autocomplete();
+                }
             }
             KeyCode::Backspace => {
                 if self.cursor > 0 {
                     self.cursor -= 1;
                     self.input.remove(self.cursor);
+                }
+                if !self.autocomplete_candidates.is_empty() {
+                    self.trigger_autocomplete();
                 }
             }
             KeyCode::Left => {
@@ -414,6 +716,14 @@ impl TuiApp {
 
     fn render_status(&self, f: &mut Frame, area: Rect) {
         let status = if self.streaming { "streaming" } else { "idle" };
+        let mode_tag = if self.plan_mode {
+            Span::styled(
+                " PLAN ",
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            )
+        } else {
+            Span::raw("")
+        };
         let left = Span::styled(
             format!(" {} ", self.model_name),
             Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
@@ -422,7 +732,12 @@ impl TuiApp {
             format!(" prompts:{} | {} ", self.prompt_count, status),
             Style::default().fg(if self.streaming { Color::Green } else { Color::DarkGray }),
         );
-        let line = Line::from(vec![left, Span::raw(" │ "), right]);
+        let mut spans = vec![left, Span::raw(" │ "), right];
+        if self.plan_mode {
+            spans.push(Span::raw(" │ "));
+            spans.push(mode_tag);
+        }
+        let line = Line::from(spans);
         let block = Block::default().borders(Borders::TOP);
         let inner = block.inner(area);
         f.render_widget(block, area);
@@ -467,6 +782,15 @@ impl TuiApp {
     fn render_input(&self, f: &mut Frame, area: Rect) {
         let title = if self.pending_perm.is_some() {
             " Approve? (y=allow / n=deny) ".to_string()
+        } else if !self.autocomplete_candidates.is_empty() {
+            let idx = self.autocomplete_idx.max(0) as usize;
+            let total = self.autocomplete_candidates.len();
+            let preview = if idx < total {
+                &self.autocomplete_candidates[idx]
+            } else {
+                ""
+            };
+            format!(" @ files ({}/{}) {} ", idx + 1, total, preview)
         } else {
             format!(
                 " Input {}",
