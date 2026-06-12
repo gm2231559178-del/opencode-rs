@@ -242,7 +242,7 @@ impl TuiApp {
         }
     }
 
-    fn handle_slash(&mut self, cmd: &str) {
+    async fn handle_slash(&mut self, cmd: &str) {
         let response = match cmd {
             "/sessions" => self.cmd_list_sessions(10),
             "/session load" | "/session continue" => {
@@ -361,6 +361,50 @@ impl TuiApp {
                     "Session busy.".to_string()
                 }
             }
+            "/plugin" => {
+                if let Ok(session) = self.session.try_lock() {
+                    let plugin_count = session.tools.iter().filter(|t| t.name().starts_with("plugin_")).count();
+                    format!("Plugins loaded: {} tools from config-based plugins.", plugin_count)
+                } else {
+                    "Session busy.".to_string()
+                }
+            }
+            "/diagnostics" | "/diag" => {
+                "Usage: /diagnostics <file_path>".to_string()
+            }
+            cmd if cmd.starts_with("/diagnostics ") || cmd.starts_with("/diag ") => {
+                let file_path = cmd.splitn(2, ' ').nth(1).unwrap_or("").trim().to_string();
+                let cwd = self.session.try_lock().map(|s| s.cwd.clone()).unwrap_or_default();
+                let full_path = if file_path.starts_with('/') {
+                    file_path
+                } else {
+                    format!("{}/{}", cwd, file_path)
+                };
+                match crate::lsp::LspManager::new().open_file(&full_path).await {
+                    Ok(diags) if diags.is_empty() => "No diagnostics found.".to_string(),
+                    Ok(diags) => {
+                        let mut out = format!("Diagnostics for {}:\n", full_path);
+                        for d in &diags {
+                            let sev = match d.severity {
+                                Some(s) if s == lsp_types::DiagnosticSeverity::ERROR => "error",
+                                Some(s) if s == lsp_types::DiagnosticSeverity::WARNING => "warning",
+                                _ => "info",
+                            };
+                            let range = &d.range;
+                            out.push_str(&format!(
+                                "  {}:{}:{} {}: {}\n",
+                                sev,
+                                range.start.line + 1,
+                                range.start.character + 1,
+                                d.source.as_deref().unwrap_or("lsp"),
+                                d.message,
+                            ));
+                        }
+                        out
+                    }
+                    Err(e) => format!("LSP error: {}", e),
+                }
+            }
             "/diff" => {
                 match self.session.try_lock() {
                     Ok(s) => s.show_diff(),
@@ -385,7 +429,7 @@ impl TuiApp {
                 self.theme_name = self.theme.name.to_string();
                 format!("Switched to theme: {}", self.theme.name)
             }
-            "/help" => "Available commands:\n  /help          - Show this help\n  /plan          - Toggle plan mode (read-only)\n  /compact       - Compact conversation history\n  /diff          - Show diff of last file edit\n  /theme         - Show current theme\n  /theme <name>  - Switch theme\n  /notify        - Toggle notification bell\n  /new           - Clear session\n  /model         - Show current model\n  /model <name>  - Switch model (e.g. /model openai/gpt-4o)\n  /agent         - Show available agents\n  /agent <name>  - Switch agent\n  /sessions      - List saved sessions\n  /session load <id>  - Load a saved session\n  /session fork       - Fork current session\n  /session delete <id> - Delete a session\n  /undo          - Undo last file change\n  /share         - Generate share link for this session\n  /share list    - List shared sessions\n  /share import <id> <secret> - Import a shared session\n  /stats         - Show usage statistics\n  /mcp           - Show MCP server connection status\n  /exit          - Quit OpenCode".to_string(),
+            "/help" => "Available commands:\n  /help          - Show this help\n  /plan          - Toggle plan mode (read-only)\n  /compact       - Compact conversation history\n  /diff          - Show diff of last file edit\n  /theme         - Show current theme\n  /theme <name>  - Switch theme\n  /notify        - Toggle notification bell\n  /new           - Clear session\n  /model         - Show current model\n  /model <name>  - Switch model (e.g. /model openai/gpt-4o)\n  /agent         - Show available agents\n  /agent <name>  - Switch agent\n  /sessions      - List saved sessions\n  /session load <id>  - Load a saved session\n  /session fork       - Fork current session\n  /session delete <id> - Delete a session\n  /undo          - Undo last file change\n  /share         - Generate share link for this session\n  /share list    - List shared sessions\n  /share import <id> <secret> - Import a shared session\n  /stats         - Show usage statistics\n  /mcp           - Show MCP server connection status\n  /plugin        - Show plugin status\n  /diagnostics <file> - Run LSP diagnostics on a file\n  /exit          - Quit OpenCode".to_string(),
             "/new" | "/clear" => self.cmd_clear_session(),
             "/models" => self.cmd_show_model(),
             "/model" => self.cmd_show_model(),
@@ -688,7 +732,7 @@ impl TuiApp {
                     self.scroll = 0;
 
                     if msg.starts_with('/') {
-                        self.handle_slash(&msg);
+                        self.handle_slash(&msg).await;
                         return Ok(());
                     }
 

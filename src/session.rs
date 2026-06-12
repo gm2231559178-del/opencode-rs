@@ -91,6 +91,10 @@ impl Session {
         let mut mcp_tools = crate::mcp::connect_mcp_servers(&config.mcp).await;
         tools.append(&mut mcp_tools);
 
+        let plugin_mgr = crate::plugin::PluginManager::load_from_config(&config.plugin);
+        let mut plugin_tools = plugin_mgr.tools();
+        tools.append(&mut plugin_tools);
+
         Ok(Self {
             id: uuid::Uuid::new_v4().to_string(),
             messages: Vec::new(),

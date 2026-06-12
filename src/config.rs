@@ -41,6 +41,19 @@ pub struct McpServerConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PluginToolConfig {
+    pub command: String,
+    pub args: Option<Vec<String>>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PluginConfig {
+    pub description: Option<String>,
+    pub tool: Option<PluginToolConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     #[serde(default)]
     pub provider: HashMap<String, ProviderConfig>,
@@ -56,6 +69,8 @@ pub struct Config {
     pub agent: HashMap<String, AgentConfig>,
     #[serde(default)]
     pub mcp: HashMap<String, McpServerConfig>,
+    #[serde(default)]
+    pub plugin: HashMap<String, PluginConfig>,
 }
 
 pub fn load_config() -> Result<Config> {
@@ -201,6 +216,13 @@ fn merge_config(base: Config, overlay: Config) -> Config {
         mcp: {
             let mut merged = base.mcp;
             for (key, val) in overlay.mcp {
+                merged.insert(key, val);
+            }
+            merged
+        },
+        plugin: {
+            let mut merged = base.plugin;
+            for (key, val) in overlay.plugin {
                 merged.insert(key, val);
             }
             merged
