@@ -1,3 +1,4 @@
+mod acp;
 mod cli;
 mod config;
 mod llm;
@@ -46,6 +47,10 @@ async fn main() -> Result<()> {
         },
         Some(cli::Commands::Serve { port }) => {
             server::run_server(cfg, store, *port).await;
+        }
+        Some(cli::Commands::Acp) => {
+            let server = acp::AcpServer::new(cfg, store);
+            server.run().await?;
         }
         Some(cli::Commands::Version) => {
             println!("opencode-rs v{}", env!("CARGO_PKG_VERSION"));

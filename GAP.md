@@ -28,7 +28,7 @@ Features from the original [opencode](https://github.com/anomalyco/opencode) pro
 | Gap | Status in opencode-rs | Location in opencode |
 |-----|-----------------------|----------------------|
 | HTTP server (`opencode serve`) | `[x]` axum-based, `/health`, `/chat`, `/sessions` | `packages/cli/src/commands/handlers/serve.ts` |
-| ACP protocol (stdin/stdout JSON-RPC) | `[ ]` | `packages/opencode/src/acp/` |
+| ACP protocol (stdin/stdout JSON-RPC) | `[x]` `opencode acp`, methods: `chat`, `sessions/list`, `sessions/get`, `ping` | `packages/opencode/src/acp/` |
 | Config merging (layered) | `[x]` Global → project → env → CLI | `packages/core/src/config.ts` |
 | Environment variables (`OPENCODE_*`) | `[x]` `OPENCODE_MODEL`, `OPENCODE_PROVIDER_API_KEY`, `OPENCODE_SHELL`, etc. | `packages/core/src/flag/flag.ts` |
 | Session sharing | `[x]` `/share`, `/share import`, `/share list` | `packages/core/src/share/sql.ts` |

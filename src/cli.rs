@@ -48,6 +48,8 @@ pub enum Commands {
         #[arg(long, default_value = "3000")]
         port: u16,
     },
+    /// ACP protocol (JSON-RPC over stdin/stdout)
+    Acp,
 }
 
 #[derive(Subcommand)]
