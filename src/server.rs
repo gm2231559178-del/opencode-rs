@@ -29,6 +29,8 @@ pub struct HealthResponse {
 }
 
 pub async fn run_server(config: Config, store: Option<SessionStore>, port: u16) {
+    let _mdns = crate::mdns::register_service("opencode", port);
+
     let state = AppState {
         config: Arc::new(config),
         store: store.map(Arc::new),

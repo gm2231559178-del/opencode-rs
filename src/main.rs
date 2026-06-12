@@ -3,6 +3,7 @@ mod cli;
 mod config;
 mod llm;
 mod log;
+mod mdns;
 mod server;
 mod session;
 mod session_store;
