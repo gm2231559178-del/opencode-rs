@@ -1,0 +1,30 @@
+[package]
+name = "opencode-rs"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "opencode-rs"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+dirs = "6"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+futures = "0.3"
+anyhow = "1"
+thiserror = "2"
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+ratatui = "0.29"
+crossterm = "0.28"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "registry"] }
+async-trait = "0.1"
+regex = "1"
+textwrap = "0.16"
+rusqlite = { version = "0.40.1", features = ["bundled"] }
