@@ -51,6 +51,7 @@ pub struct TuiApp {
     pub toast: Option<(String, u8)>,
     pub leader_mode: bool,
     pub file_watcher_rx: Option<std_mpsc::Receiver<String>>,
+    pub diff_viewer: Option<(Vec<String>, usize)>,  // (lines, scroll_offset)
 }
 
 #[derive(Clone)]
@@ -103,6 +104,7 @@ impl TuiApp {
             toast: None,
             leader_mode: false,
             file_watcher_rx: None,
+            diff_viewer: None,
         }
     }
 
@@ -532,7 +534,16 @@ impl TuiApp {
             }
             "/diff" => {
                 match self.session.try_lock() {
-                    Ok(s) => s.show_diff(),
+                    Ok(s) => {
+                        let diff = s.show_diff();
+                        if diff.starts_with("---") {
+                            let lines: Vec<String> = diff.lines().map(|l| l.to_string()).collect();
+                            self.diff_viewer = Some((lines, 0));
+                            String::new()
+                        } else {
+                            diff
+                        }
+                    }
                     Err(_) => "Session busy, try again.".to_string(),
                 }
             }
@@ -877,6 +888,39 @@ impl TuiApp {
     }
 
     async fn handle_key(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
+        // Diff viewer mode handles all keys when active
+        if self.diff_viewer.is_some() {
+            let lines_len = self.diff_viewer.as_ref().map(|v| v.0.len()).unwrap_or(0);
+            let scroll = self.diff_viewer.as_ref().map(|v| v.1).unwrap_or(0);
+            match key.code {
+                KeyCode::Esc => { self.diff_viewer = None; }
+                KeyCode::Up => {
+                    let new_scroll = scroll.saturating_sub(1);
+                    self.diff_viewer.as_mut().map(|v| v.1 = new_scroll);
+                }
+                KeyCode::Down => {
+                    let new_scroll = (scroll + 1).min(lines_len.saturating_sub(1));
+                    self.diff_viewer.as_mut().map(|v| v.1 = new_scroll);
+                }
+                KeyCode::PageUp => {
+                    let new_scroll = scroll.saturating_sub(20);
+                    self.diff_viewer.as_mut().map(|v| v.1 = new_scroll);
+                }
+                KeyCode::PageDown => {
+                    let new_scroll = (scroll + 20).min(lines_len.saturating_sub(1));
+                    self.diff_viewer.as_mut().map(|v| v.1 = new_scroll);
+                }
+                KeyCode::Home => {
+                    self.diff_viewer.as_mut().map(|v| v.1 = 0);
+                }
+                KeyCode::End => {
+                    self.diff_viewer.as_mut().map(|v| v.1 = lines_len.saturating_sub(1));
+                }
+                _ => {}
+            }
+            return Ok(());
+        }
+
         // Leader mode: handle the action key
         if self.leader_mode {
             self.leader_mode = false;
@@ -1141,6 +1185,50 @@ impl TuiApp {
                 self.toast = None;
             }
         }
+
+        // Render diff viewer overlay on top of everything
+        if self.diff_viewer.is_some() {
+            self.render_diff_viewer(f);
+        }
+    }
+
+    fn render_diff_viewer(&mut self, f: &mut Frame) {
+        let (lines, scroll) = match &self.diff_viewer {
+            Some(v) => v,
+            None => return,
+        };
+        let t = self.theme;
+        let max_lines = (f.area().height as usize).saturating_sub(6);
+        let scroll = *scroll;
+
+        let visible: Vec<&str> = lines.iter().skip(scroll).take(max_lines).map(|s| s.as_str()).collect();
+        let total = lines.len();
+
+        let title = format!(" Diff Viewer [{} lines] (↑↓/PgUp/PgDn scroll, Esc close) ", total);
+        let items: Vec<ListItem> = visible
+            .iter()
+            .map(|line| {
+                let style = if line.starts_with('+') && !line.starts_with("+++") {
+                    Style::default().fg(t.success).add_modifier(Modifier::DIM)
+                } else if line.starts_with('-') && !line.starts_with("---") {
+                    Style::default().fg(t.error).add_modifier(Modifier::DIM)
+                } else if line.starts_with("@@") || line.starts_with("--- ") || line.starts_with("+++ ") {
+                    Style::default().fg(t.accent).add_modifier(Modifier::DIM)
+                } else {
+                    Style::default().fg(t.text)
+                };
+                ListItem::new(Line::from(vec![Span::styled(*line, style)]))
+            })
+            .collect();
+
+        let list = List::new(items).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(title)
+                .border_style(Style::default().fg(t.primary)),
+        );
+
+        f.render_widget(list, f.area());
     }
 
     fn render_toast(&self, f: &mut Frame, area: Rect, msg: &str) {

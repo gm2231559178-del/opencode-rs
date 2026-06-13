@@ -33,7 +33,7 @@ Real feature gaps between the Rust reimplementation and the original [opencode](
 | 30+ dialogs | `[ ]` | `packages/tui/src/component/dialog-*.tsx` | Agent, model, MCP, workspace, session, tag, skill, theme, stash, provider, console, export, etc. |
 | Autocomplete (`@` file, `#L` lines, frecency) | `[~]` | `packages/tui/src/component/prompt/autocomplete.tsx` | `@` triggers fd, dir/ indicator, #L range support |
 | Thinking/reasoning display | `[x]` | `packages/tui/src/context/thinking.ts` | Collapsible reasoning blocks, Ctrl+R toggle |
-| Diff viewer (side-by-side/stacked) | `[ ]` | `packages/tui/src/feature-plugins/system/diff-viewer.tsx` | Interactive diff with file tree |
+| Diff viewer (side-by-side/stacked) | `[x]` | `packages/tui/src/feature-plugins/system/diff-viewer.tsx` | Scrollable overlay with +/- colors, arrow/PgUp/PgDn/Home/End |
 | Audio/sound system | `[ ]` | `packages/tui/src/audio.ts` | Events: question, permission, error, done |
 | Clipboard integration | `[x]` | `packages/tui/src/context/clipboard.tsx` | Yank last response (Ctrl+Y) |
 | Editor integration | `[ ]` | `packages/tui/src/editor.ts`, `editor-zed.ts` | Zed buffer, $EDITOR/$VISUAL |
