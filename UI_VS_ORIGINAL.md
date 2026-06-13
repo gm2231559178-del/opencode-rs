@@ -21,7 +21,7 @@
 | **User messages** | Left border only, no label, `background_panel` bg | `▎` bar only, `background_panel` bg | Fixed |
 | **Assistant messages** | No background (default), text parts at `paddingLeft=3` | No background, `▎` bar | Fixed |
 | **Tool call icons** | Per-tool type: `$` shell, `✱` glob, `→` read, `←` write, `✓` done, `⚙` generic, `%` fetch, `◈` search | Per-tool icons with human name | Fixed |
-| **Message spacing** | `marginTop=1` between message blocks | Empty `Line::from("")` appended to each message | Open |
+| **Message spacing** | `marginTop=1` between message blocks | `▎` bar provides visual separation, no extra empty line | Fixed |
 | **Timestamps** | Optional per-message timestamp (`showTimestamps()`) | None | Open |
 
 ## Scroll & Navigation
@@ -29,14 +29,14 @@
 | Gap | Original | Rust | Status |
 |-----|----------|------|--------|
 | **Scrollbar** | Toggleable themed scrollbar (track/foreground colors) | `↑ N` text indicator when scrolled | Fixed |
-| **Sticky scroll** | `stickyStart="bottom"` — auto-follows newest | Manual scroll, resets to newest on new message | Open |
+| **Sticky scroll** | `stickyStart="bottom"` — auto-follows newest | Auto-follows when at bottom, keeps place when scrolled up | Fixed |
 
 ## Feature Rendering
 
 | Gap | Original | Rust | Status |
 |-----|----------|------|--------|
 | **Code blocks** | Full markdown syntax highlighting (language-specific tokens) | Language-aware highlighting for Rust/Python/JS/Go/Java/C++ | Fixed |
-| **Reasoning/thinking** | Per-block spinner, collapse/expand, duration display | Global toggle (`reasoning_visible`), no spinner/duration | Open |
+| **Reasoning/thinking** | Per-block spinner, collapse/expand, duration display | Spinner on reasoning blocks during streaming, global visibility toggle | Fixed |
 | **Diff display** | Inline `<diff>` component in message flow (line numbers, split/unified) | Separate full-screen overlay (`/diff`) | Open |
 | **Toast notifications** | Stacked bottom-right overlay, variants (success/error/info/warning) | Bottom-right overlay, success color | Fixed |
 

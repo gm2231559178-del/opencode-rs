@@ -97,6 +97,7 @@ pub struct TuiApp {
     pub dialog: Option<ActiveDialog>,
     pub dialog_stack: Vec<ActiveDialog>,
     pub references: Vec<crate::reference::ReferenceInfo>,
+    pub frame_count: u64,
     pub sidebar_visible: bool,
     pub sidebar_panels_open: Vec<bool>,
     pub context_tokens: usize,
@@ -169,6 +170,7 @@ impl TuiApp {
             dialog: None,
             dialog_stack: Vec::new(),
             references,
+            frame_count: 0,
             sidebar_visible: false,
             sidebar_panels_open: vec![true; 5],
             context_tokens: 0,
@@ -429,6 +431,10 @@ impl TuiApp {
             self.streaming = false;
             self.stream_rx = None;
             self.save_session();
+        }
+        // Sticky scroll: when scrolled up, keep view stable as new messages arrive
+        if self.scroll > 0 {
+            self.scroll = self.scroll.saturating_add(1);
         }
     }
 
@@ -2122,6 +2128,7 @@ impl TuiApp {
     }
 
     fn render(&mut self, f: &mut Frame) {
+        self.frame_count = self.frame_count.wrapping_add(1);
         let has_toast = self.toast.is_some();
         let has_ac = !self.autocomplete_candidates.is_empty();
         let ac_count = self.autocomplete_candidates.len();
@@ -2517,9 +2524,16 @@ impl TuiApp {
                 // Build lines with left border marker "▎" and content
                 let bar_style = Style::default().fg(border_color);
                 let bar = Span::styled("▎", bar_style);
+                let spinner = if self.streaming && m.role == "reasoning" {
+                    let spinner_chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+                    let idx = (self.frame_count / 3) as usize % spinner_chars.len();
+                    Span::styled(spinner_chars[idx], Style::default().fg(t.text_muted))
+                } else {
+                    Span::raw("")
+                };
                 let pad = Span::raw(" ");
 
-                let mut lines = vec![Line::from(vec![bar, pad])];
+                let mut lines = vec![Line::from(vec![bar, spinner, pad])];
 
                 let content_width = w.saturating_sub(4);
                 if m.role == "assistant" || m.role == "reasoning" {
@@ -2535,7 +2549,6 @@ impl TuiApp {
                     }
                 }
 
-                lines.push(Line::from(""));
                 ListItem::new(lines).style(Style::default().bg(bg_color))
             })
             .collect();
