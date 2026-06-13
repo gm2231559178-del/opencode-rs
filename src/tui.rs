@@ -53,6 +53,7 @@ pub struct TuiApp {
 pub struct TuiMessage {
     pub role: String,
     pub content: String,
+    pub age: u8,
 }
 
 const SLASH_COMMANDS: &[&str] = &[
@@ -138,6 +139,11 @@ impl TuiApp {
     }
 
     fn poll_stream(&mut self) {
+        // Age all messages for fade-in animation
+        for m in &mut self.messages {
+            m.age = m.age.saturating_add(1);
+        }
+
         if !self.streaming {
             return;
         }
@@ -152,6 +158,7 @@ impl TuiApp {
                         let needs_new = self.messages.last().map(|m| m.role != "assistant").unwrap_or(true);
                         if needs_new {
                             self.messages.push(TuiMessage {
+                                age: 0,
                                 role: "assistant".to_string(),
                                 content: delta,
                             });
@@ -170,6 +177,7 @@ impl TuiApp {
                             .unwrap_or_default();
                         let preview: String = args_str.chars().take(400).collect();
                         self.messages.push(TuiMessage {
+            age: 0,
                             role: "tool_call".to_string(),
                             content: format!("{} ({})\n{}", name, short, preview),
                         });
@@ -178,6 +186,7 @@ impl TuiApp {
                         let args_str = serde_json::to_string_pretty(&args).unwrap_or_default();
                         let preview: String = args_str.chars().take(200).collect();
                         self.messages.push(TuiMessage {
+            age: 0,
                             role: "tool_call".to_string(),
                             content: format!("{} (AWAITING APPROVAL)\n{}", tool_name, preview),
                         });
@@ -192,6 +201,7 @@ impl TuiApp {
                             format!("{} ({} bytes)\n{}", name, output.len(), preview)
                         };
                         self.messages.push(TuiMessage {
+                            age: 0,
                             role: "tool_result".to_string(),
                             content,
                         });
@@ -205,6 +215,7 @@ impl TuiApp {
                         if !self.reasoning.is_empty() {
                             let reasoning = std::mem::take(&mut self.reasoning);
                             self.messages.push(TuiMessage {
+                                age: 0,
                                 role: "reasoning".to_string(),
                                 content: reasoning,
                             });
@@ -222,6 +233,7 @@ impl TuiApp {
                                 msg.content = response.trim().to_string();
                             } else {
                                 self.messages.push(TuiMessage {
+                                    age: 0,
                                     role: "assistant".to_string(),
                                     content: response.trim().to_string(),
                                 });
@@ -240,6 +252,7 @@ impl TuiApp {
                             msg.content = format!("Error: {}", message);
                         } else {
                             self.messages.push(TuiMessage {
+            age: 0,
                                 role: "assistant".to_string(),
                                 content: format!("Error: {}", message),
                             });
@@ -492,6 +505,7 @@ impl TuiApp {
         };
         if !response.is_empty() {
             self.messages.push(TuiMessage {
+                age: 0,
                 role: "assistant".to_string(),
                 content: response,
             });
@@ -636,11 +650,13 @@ impl TuiApp {
                     Ok(mut ctx) => {
                         if ctx.set_text(msg.content.clone()).is_ok() {
                             self.messages.push(TuiMessage {
+                                age: 0,
                                 role: "assistant".to_string(),
                                 content: "Last response copied to clipboard.".to_string(),
                             });
                         } else {
                             self.messages.push(TuiMessage {
+                                age: 0,
                                 role: "assistant".to_string(),
                                 content: "Failed to copy to clipboard.".to_string(),
                             });
@@ -648,6 +664,7 @@ impl TuiApp {
                     }
                     Err(_) => {
                         self.messages.push(TuiMessage {
+                            age: 0,
                             role: "assistant".to_string(),
                             content: "Clipboard not available.".to_string(),
                         });
@@ -656,6 +673,7 @@ impl TuiApp {
             }
             _ => {
                 self.messages.push(TuiMessage {
+                    age: 0,
                     role: "assistant".to_string(),
                     content: "No response to copy.".to_string(),
                 });
@@ -835,6 +853,7 @@ impl TuiApp {
                     self.history_index = -1;
                     self.saved_input.clear();
                     self.messages.push(TuiMessage {
+                        age: 0,
                         role: "user".to_string(),
                         content: msg.clone(),
                     });
@@ -847,6 +866,7 @@ impl TuiApp {
 
                     self.prompt_count += 1;
                     self.messages.push(TuiMessage {
+                        age: 0,
                         role: "assistant".to_string(),
                         content: "...".to_string(),
                     });
@@ -1063,7 +1083,7 @@ impl TuiApp {
             .rev()
             .skip(self.scroll)
             .map(|(idx, m)| {
-                let style = match m.role.as_str() {
+                let mut style = match m.role.as_str() {
                     "user" => Style::default().fg(t.user_msg).add_modifier(Modifier::BOLD),
                     "assistant" => Style::default().fg(t.assistant_msg),
                     "reasoning" => Style::default().fg(t.dim).add_modifier(Modifier::DIM),
@@ -1071,6 +1091,13 @@ impl TuiApp {
                     "tool_result" => Style::default().fg(t.tool_result).add_modifier(Modifier::DIM),
                     _ => Style::default().fg(t.text),
                 };
+                // Fade-in: first 10 frames ramp from dim to full brightness
+                if m.age < 10 && (m.role == "assistant" || m.role == "reasoning") {
+                    let fade = (m.age as f32 / 10.0);
+                    if fade < 0.5 {
+                        style = style.add_modifier(Modifier::DIM);
+                    }
+                }
                 let label = match m.role.as_str() {
                     "tool_call" => "tool".to_string(),
                     "tool_result" => "result".to_string(),

@@ -42,7 +42,7 @@ Real feature gaps between the Rust reimplementation and the original [opencode](
 | Scroll acceleration | `[x]` | `packages/tui/src/util/scroll.ts` | PageUp/PageDown |
 | Multi-line input | `[x]` | `packages/tui/` | Shift+Enter newline, Ctrl+Enter submit |
 | Tool output collapse | `[x]` | `packages/tui/src/util/collapse-tool-output.ts` | Ctrl+O collapse/expand |
-| Fade-in animations | `[ ]` | `packages/tui/src/util/signal.ts` | `createFadeIn` utility |
+| Fade-in animations | `[~]` | `packages/tui/src/util/signal.ts` | Age-based dim ramp (0→10 frames) for new assistant/reasoning messages |
 
 ## P2 — Infrastructure
 
