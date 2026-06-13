@@ -655,17 +655,17 @@ impl TuiApp {
     }
 
     fn trigger_autocomplete(&mut self) {
-        // Find the last @ in input text after cursor
         let before_cursor = &self.input[..self.cursor];
         let at_pos = before_cursor.rfind('@');
         match at_pos {
             Some(pos) => {
                 let query = before_cursor[pos + 1..].to_string();
-                // Search for files matching query
-                let pattern = if query.is_empty() {
+                // Strip any trailing line range (#L...)
+                let file_query = query.split('#').next().unwrap_or(&query).to_string();
+                let pattern = if file_query.is_empty() {
                     "*".to_string()
                 } else {
-                    format!("*{}*", query)
+                    format!("*{}*", file_query)
                 };
                 let mut cmd = std::process::Command::new("fd");
                 cmd.arg("--glob").arg(&pattern).arg("--max-results").arg("20");
@@ -677,9 +677,19 @@ impl TuiApp {
                     .and_then(|o| String::from_utf8(o.stdout).ok())
                     .map(|s| s.lines().map(|l| l.to_string()).collect())
                     .unwrap_or_default();
-                // Sort by proximity to query
-                if !query.is_empty() {
-                    candidates.sort_by_key(|c| c.to_lowercase().find(&query.to_lowercase()));
+                if !file_query.is_empty() {
+                    candidates.sort_by_key(|c| {
+                        let lower_c = c.to_lowercase();
+                        let lower_q = file_query.to_lowercase();
+                        lower_c.find(&lower_q).unwrap_or(usize::MAX)
+                    });
+                }
+                // Add line range info to candidates
+                for c in &mut candidates {
+                    let path = std::path::Path::new(c);
+                    if path.is_dir() {
+                        c.push('/');
+                    }
                 }
                 self.autocomplete_candidates = candidates;
                 self.autocomplete_idx = if self.autocomplete_candidates.is_empty() {
@@ -702,9 +712,20 @@ impl TuiApp {
         let selected = &self.autocomplete_candidates[self.autocomplete_idx as usize];
         let before_cursor = &self.input[..self.cursor];
         if let Some(at_pos) = before_cursor.rfind('@') {
-            // Replace from @ to cursor with the selected file path
             let after_cursor = &self.input[self.cursor..];
-            let replacement = format!("{} ", selected);
+            // Check if user typed a #L suffix after the @
+            let after_at = &before_cursor[at_pos + 1..];
+            let suffix = if let Some(hash_pos) = after_at.find('#') {
+                after_at[hash_pos..].to_string()
+            } else {
+                String::new()
+            };
+            let replacement = if suffix.is_empty() {
+                format!("{} ", selected)
+            } else {
+                // Keep the line range suffix
+                format!("{}", selected)
+            };
             let new_input = format!("{}{}{}", &self.input[..at_pos], replacement, after_cursor);
             let new_cursor = at_pos + replacement.len();
             self.input = new_input;
@@ -1062,6 +1083,9 @@ impl TuiApp {
         let fence_style = Style::default().fg(t.border).add_modifier(Modifier::DIM);
         let lang_style = Style::default().fg(t.tool_call);
         let text_style = Style::default().fg(t.text);
+        let diff_add = Style::default().fg(t.success).add_modifier(Modifier::DIM);
+        let diff_del = Style::default().fg(t.error).add_modifier(Modifier::DIM);
+        let diff_hunk = Style::default().fg(t.accent).add_modifier(Modifier::DIM);
 
         let mut in_code = false;
         let mut code_buf = String::new();
@@ -1069,7 +1093,6 @@ impl TuiApp {
         for line in content.lines() {
             if line.starts_with("```") {
                 if in_code {
-                    // End of code block
                     if !code_buf.is_empty() {
                         Self::render_code_block(&code_buf, width, fence_style, out);
                         code_buf.clear();
@@ -1077,7 +1100,6 @@ impl TuiApp {
                     out.push(Line::from(vec![Span::styled("  ───", fence_style)]));
                     in_code = false;
                 } else {
-                    // Start of code block
                     let lang = line.trim_start_matches("```").trim().to_string();
                     let header = if lang.is_empty() {
                         Span::styled("  ```", fence_style)
@@ -1091,6 +1113,14 @@ impl TuiApp {
             } else if in_code {
                 code_buf.push_str(line);
                 code_buf.push('\n');
+            } else if line.starts_with("+++ ") || line.starts_with("--- ") {
+                out.push(Line::from(vec![Span::styled(format!("  {}", line), diff_hunk)]));
+            } else if line.starts_with("@@") {
+                out.push(Line::from(vec![Span::styled(format!("  {}", line), diff_hunk)]));
+            } else if line.starts_with('+') && !line.starts_with("+++") {
+                out.push(Line::from(vec![Span::styled(format!("  {}", line), diff_add)]));
+            } else if line.starts_with('-') && !line.starts_with("---") {
+                out.push(Line::from(vec![Span::styled(format!("  {}", line), diff_del)]));
             } else {
                 let wrapped = textwrap::fill(line, width as usize);
                 for wl in wrapped.lines() {
@@ -1105,11 +1135,24 @@ impl TuiApp {
     }
 
     fn render_code_block(code: &str, width: usize, fence_style: Style, out: &mut Vec<Line>) {
-        let code_style = Style::default().fg(crate::theme::DEFAULT.dim).add_modifier(Modifier::DIM);
+        let t = &crate::theme::DEFAULT;
+        let code_style = Style::default().fg(t.dim).add_modifier(Modifier::DIM);
+        let diff_add = Style::default().fg(t.success).add_modifier(Modifier::DIM);
+        let diff_del = Style::default().fg(t.error).add_modifier(Modifier::DIM);
+        let diff_hunk = Style::default().fg(t.accent).add_modifier(Modifier::DIM);
         for line in code.lines() {
+            let style = if line.starts_with('+') && !line.starts_with("+++") {
+                diff_add
+            } else if line.starts_with('-') && !line.starts_with("---") {
+                diff_del
+            } else if line.starts_with("@@") || line.starts_with("--- ") || line.starts_with("+++ ") {
+                diff_hunk
+            } else {
+                code_style
+            };
             let wrapped = textwrap::fill(line, width.saturating_sub(2));
             for wl in wrapped.lines() {
-                out.push(Line::from(vec![Span::styled(format!("  {}", wl), code_style)]));
+                out.push(Line::from(vec![Span::styled(format!("  {}", wl), style)]));
             }
         }
     }
