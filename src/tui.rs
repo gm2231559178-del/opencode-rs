@@ -2144,16 +2144,9 @@ impl TuiApp {
             self.refresh_sidebar_data();
         }
 
-        // Build vertical constraints with toast row and autocomplete popup if active
+        // Build vertical constraints
         let mut constraints = Vec::new();
         constraints.push(Constraint::Min(1)); // messages
-        if has_toast {
-            constraints.push(Constraint::Length(1)); // toast
-        }
-        constraints.push(Constraint::Length(1)); // status
-        if has_ac {
-            constraints.push(Constraint::Length(ac_height)); // autocomplete popup
-        }
         constraints.push(Constraint::Length(5)); // input
 
         let chunks = Layout::default()
@@ -2163,20 +2156,26 @@ impl TuiApp {
 
         let mut ci = 0;
         self.render_messages(f, chunks[ci]);
-        ci += 1;
+        // Toast rendered as overlay on top of messages
         if has_toast {
             if let Some((ref msg, _)) = self.toast {
-                self.render_toast(f, chunks[ci], msg);
+                self.render_toast_overlay(f, chunks[ci], msg);
             }
-            ci += 1;
         }
-        self.render_status(f, chunks[ci]);
         ci += 1;
-        if has_ac {
-            self.render_autocomplete_popup(f, chunks[ci], &self.autocomplete_candidates, self.autocomplete_idx);
-            ci += 1;
-        }
         self.render_input(f, chunks[ci]);
+
+        // Autocomplete rendered as overlay above the input bar
+        if has_ac {
+            let ac_area = Rect {
+                x: main_area.x,
+                y: chunks[ci].y.saturating_sub(ac_height),
+                width: main_area.width,
+                height: ac_height,
+            };
+            f.render_widget(Clear, ac_area);
+            self.render_autocomplete_popup(f, ac_area, &self.autocomplete_candidates, self.autocomplete_idx);
+        }
 
         // Decrement toast counter for next frame
         if let Some((_, ref mut count)) = self.toast {
@@ -2408,21 +2407,27 @@ impl TuiApp {
         f.render_widget(list, f.area());
     }
 
-    fn render_toast(&self, f: &mut Frame, area: Rect, msg: &str) {
+    fn render_toast_overlay(&self, f: &mut Frame, area: Rect, msg: &str) {
         let t = self.theme;
         let text = Span::styled(
             format!(" {} ", msg),
             Style::default()
                 .fg(t.success)
-                .bg(t.bg)
+                .bg(t.background_panel)
                 .add_modifier(Modifier::BOLD),
         );
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(t.success));
-        let inner = block.inner(area);
-        f.render_widget(block, area);
-        f.render_widget(Paragraph::new(text).wrap(Wrap { trim: true }), inner);
+        let w = msg.len() as u16 + 4;
+        let overlay = Rect {
+            x: area.right().saturating_sub(w.min(area.width)),
+            y: area.bottom().saturating_sub(1),
+            width: w.min(area.width),
+            height: 1,
+        };
+        f.render_widget(Clear, overlay);
+        f.render_widget(
+            ratatui::widgets::Paragraph::new(Line::from(text)),
+            overlay,
+        );
     }
 
     fn render_status(&self, f: &mut Frame, area: Rect) {
@@ -2464,13 +2469,7 @@ impl TuiApp {
             ));
         }
         let line = Line::from(spans);
-        let block = Block::default()
-            .borders(Borders::TOP)
-            .border_style(Style::default().fg(t.border))
-            .style(Style::default().bg(t.background_element));
-        let inner = block.inner(area);
-        f.render_widget(block, area);
-        f.render_widget(ratatui::widgets::Paragraph::new(line).style(Style::default().bg(t.background_element)), inner);
+        f.render_widget(ratatui::widgets::Paragraph::new(line).style(Style::default().bg(t.background_element)), area);
     }
 
     fn render_messages(&self, f: &mut Frame, area: Rect) {
@@ -2689,43 +2688,34 @@ impl TuiApp {
 
     fn render_input(&self, f: &mut Frame, area: Rect) {
         let t = self.theme;
-        let title = if self.pending_perm.is_some() {
-            " Approve? (y=allow / n=deny) ".to_string()
-        } else if self.leader_mode {
-            " Leader: (b)ar (k)ommand (w)orkspace (r)ename (f)iles (s)essions (m)odel (a)gent (t)heme (h)elp (p)rompt (c)MCP (/)plan (n)ew (d)iff (e)dit (q)uit (?)status ".to_string()
-        } else if !self.autocomplete_candidates.is_empty() {
-            format!(
-                " {} ({}/{}) ",
-                if self.input.starts_with('/') && !self.input.contains(' ') { "Commands" } else { "@ files" },
-                self.autocomplete_idx.max(0) as usize + 1,
-                self.autocomplete_candidates.len()
-            )
-        } else {
-            let hint = if self.input.contains('\n') {
-                " Ctrl+Enter to send | Esc to cancel | Ctrl+R/E/O: thinking/open/collapse"
-            } else {
-                " Shift+Enter for newline | Ctrl+R/E/O: thinking/open/collapse"
-            };
-            format!(
-                " Input{}{} ",
-                if self.input_history.is_empty() {
-                    ""
-                } else {
-                    "(↑↓ history) "
-                },
-                hint
-            )
-        };
         let border_color = if self.leader_mode { t.border_active } else { t.border };
+
+        let outer_block = Block::default()
+            .borders(Borders::LEFT)
+            .border_style(Style::default().fg(border_color))
+            .style(Style::default().bg(t.background_element));
+
+        let inner = outer_block.inner(area);
+
+        // Split inner area into input text + status row at bottom
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(1), Constraint::Length(1)])
+            .split(inner);
+
+        f.render_widget(outer_block, area);
+
         let input = Paragraph::new(self.input.as_str())
             .style(Style::default().fg(t.text).bg(t.background_element))
-            .block(Block::default().borders(Borders::ALL).title(title).border_style(Style::default().fg(border_color)).style(Style::default().bg(t.background_element)))
             .wrap(Wrap { trim: true });
 
-        f.render_widget(input, area);
+        f.render_widget(input, chunks[0]);
 
         let cursor_pos = self.input.len() as u16;
-        f.set_cursor_position((area.x + cursor_pos + 1, area.y + 1));
+        f.set_cursor_position((chunks[0].x + cursor_pos + 1, chunks[0].y + 1));
+
+        // Render status inside the input box
+        self.render_status(f, chunks[1]);
     }
 
     // ── Dialog rendering ────────────────────────────────────
