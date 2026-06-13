@@ -85,7 +85,7 @@ Real feature gaps between the Rust reimplementation and the original [opencode](
 | Serve flags | `[~]` | `packages/cli/src/commands/handlers/serve.ts` | Missing: `--hostname`, `--register` |
 | Plugin SDK | `[ ]` | `packages/sdk/js/` | Build plugins with authenticated server comms |
 | Migration (v1→v2) | `[ ]` | `packages/cli/src/commands/handlers/migrate.ts` | Data migration tooling |
-| Version detection | `[ ]` | `packages/core/src/installation/version.ts` | Channel/version tracking |
+| Version detection | `[x]` | `packages/core/src/installation/version.ts` | `--version` flag, `/version` command |
 | Global paths | `[ ]` | `packages/core/src/global.ts` | XDG-based directory resolution |
 | Locale utilities | `[ ]` | `packages/tui/src/util/locale.ts` | Text truncation, number formatting |
 | Presentation utilities | `[ ]` | `packages/tui/src/util/presentation.ts` | Session epilogue formatting |
@@ -93,7 +93,7 @@ Real feature gaps between the Rust reimplementation and the original [opencode](
 | File type detection | `[ ]` | `packages/tui/src/util/filetype.ts` | Extension→display name |
 | Path utilities | `[ ]` | `packages/tui/src/util/path.ts` | Path normalization |
 | Format utilities | `[ ]` | `packages/tui/src/util/format.ts` | Duration formatting |
-| Tool display names | `[ ]` | `packages/tui/src/util/tool-display.ts` | Human-readable tool names |
+| Tool display names | `[x]` | `packages/tui/src/util/tool-display.ts` | Human-readable names for all 13 tools |
 
 ---
 

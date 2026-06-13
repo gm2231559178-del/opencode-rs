@@ -64,7 +64,7 @@ pub struct TuiMessage {
 const SLASH_COMMANDS: &[&str] = &[
     "/help", "/plan", "/compact", "/diff", "/theme", "/theme <name>",
     "/notify", "/new", "/model", "/model <name>", "/agent", "/agent <name>",
-    "/agents", "/sessions", "/session load <id>", "/session fork",
+    "/agents", "/version", "/sessions", "/session load <id>", "/session fork",
     "/session rename <id> <name>", "/session delete <id>", "/session new",
     "/undo", "/share", "/share list", "/share import <id> <secret>",
     "/stats", "/mcp", "/plugin", "/diagnostics <file>", "/exit",
@@ -565,7 +565,7 @@ impl TuiApp {
                 self.theme_name = self.theme.name.to_string();
                 format!("Switched to theme: {}", self.theme.name)
             }
-            "/help" => "Available commands:\n  /help           - Show this help\n  /plan           - Toggle plan mode (read-only)\n  /compact        - Compact conversation history\n  /diff           - Show diff of last file edit\n  /theme          - Show current theme\n  /theme <name>   - Switch theme\n  /notify         - Toggle notification bell\n  /new            - Clear session\n  /model          - Show current model\n  /model <name>   - Switch model (e.g. /model openai/gpt-4o)\n  /agent          - Show available agents\n  /agent <name>   - Switch agent\n  /agents         - Show AGENTS.md workspace instructions\n  /sessions       - List saved sessions\n  /session load <id>   - Load a saved session\n  /session fork        - Fork current session\n  /session rename <id> <name> - Rename a session\n  /session delete <id> - Delete a session\n  /undo           - Undo last file change\n  /share          - Generate share link for this session\n  /share list     - List shared sessions\n  /share import <id> <secret> - Import a shared session\n  /stats          - Show usage statistics\n  /mcp            - Show MCP server connection status\n  /plugin         - Show plugin status\n  /diagnostics <file> - Run LSP diagnostics on a file\n  /exit           - Quit OpenCode".to_string(),
+            "/help" => "Available commands:\n  /help           - Show this help\n  /plan           - Toggle plan mode (read-only)\n  /compact        - Compact conversation history\n  /diff           - Show diff of last file edit\n  /theme          - Show current theme\n  /theme <name>   - Switch theme\n  /notify         - Toggle notification bell\n  /new            - Clear session\n  /model          - Show current model\n  /model <name>   - Switch model (e.g. /model openai/gpt-4o)\n  /agent          - Show available agents\n  /agent <name>   - Switch agent\n  /agents         - Show AGENTS.md workspace instructions\n  /version        - Show version info\n  /sessions       - List saved sessions\n  /session load <id>   - Load a saved session\n  /session fork        - Fork current session\n  /session rename <id> <name> - Rename a session\n  /session delete <id> - Delete a session\n  /undo           - Undo last file change\n  /share          - Generate share link for this session\n  /share list     - List shared sessions\n  /share import <id> <secret> - Import a shared session\n  /stats          - Show usage statistics\n  /mcp            - Show MCP server connection status\n  /plugin         - Show plugin status\n  /diagnostics <file> - Run LSP diagnostics on a file\n  /exit           - Quit OpenCode".to_string(),
             "/new" | "/clear" => self.cmd_clear_session(),
             "/models" => self.cmd_show_model(),
             "/model" => self.cmd_show_model(),
@@ -594,6 +594,9 @@ impl TuiApp {
                 } else {
                     format!("AGENTS.md:\n{}", content)
                 }
+            }
+            "/version" => {
+                format!("opencode-rs v{}", env!("CARGO_PKG_VERSION"))
             }
             "/exit" | "/quit" | "/q" => {
                 self.quit = true;

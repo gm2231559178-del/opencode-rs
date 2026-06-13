@@ -13,6 +13,7 @@ mod session_store;
 mod theme;
 mod tools;
 mod tui;
+mod util;
 
 use anyhow::Result;
 
