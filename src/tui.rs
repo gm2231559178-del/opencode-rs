@@ -694,6 +694,7 @@ impl TuiApp {
         options.push(SelectOption { title: "Compact conversation".into(), description: Some("Summarize and trim history".into()), category: Some("Session".into()), value: "compact".into() });
         options.push(SelectOption { title: "Session list".into(), description: Some("Browse and load saved sessions".into()), category: Some("Session".into()), value: "sessions".into() });
         options.push(SelectOption { title: "Rename session".into(), description: Some("Change the session title".into()), category: Some("Session".into()), value: "rename".into() });
+        options.push(SelectOption { title: "Delete session".into(), description: Some("Permanently delete current session".into()), category: Some("Session".into()), value: "delete_session".into() });
         options.push(SelectOption { title: "Undo last file change".into(), description: None, category: Some("Session".into()), value: "undo".into() });
         // Display
         options.push(SelectOption { title: "Toggle sidebar".into(), description: Some("Show or hide the sidebar panel".into()), category: Some("Display".into()), value: "sidebar".into() });
@@ -730,6 +731,23 @@ impl TuiApp {
     fn handle_dialog_key(&mut self, key: crossterm::event::KeyEvent) -> Result<bool> {
         if self.dialog.is_none() {
             return Ok(false);
+        }
+
+        // Special handling for Confirm dialog — y/n keys
+        if let Some(ActiveDialog::Confirm { ref action, .. }) = self.dialog {
+            match key.code {
+                KeyCode::Char('y') | KeyCode::Enter => {
+                    let act = action.clone();
+                    self.pop_dialog();
+                    self.exec_confirm_action(&act);
+                    return Ok(true);
+                }
+                KeyCode::Char('n') | KeyCode::Esc => {
+                    self.pop_dialog();
+                    return Ok(true);
+                }
+                _ => {}
+            }
         }
 
         // Special handling for Prompt dialog — intercept text input
@@ -779,8 +797,10 @@ impl TuiApp {
                         self.pop_dialog();
                         None
                     }
-                    Confirm { .. } => {
+                    Confirm { action, .. } => {
+                        let act = action.clone();
                         self.pop_dialog();
+                        self.exec_confirm_action(&act);
                         None
                     }
                     Agent { options, selected, filter } => {
@@ -898,10 +918,34 @@ impl TuiApp {
         }
     }
 
+    fn exec_confirm_action(&mut self, action: &str) {
+        if action == "clear" {
+            self.cmd_clear_session();
+            if let Ok(mut s) = self.session.try_lock() {
+                s.id = uuid::Uuid::new_v4().to_string();
+            }
+            self.show_toast("New session created.".to_string());
+        } else if let Some(id) = action.strip_prefix("delete_session:") {
+            if let Some(store) = &self.store {
+                match store.delete_session(id) {
+                    Ok(()) => self.show_toast(format!("Session {} deleted.", &id[..8.min(id.len())])),
+                    Err(e) => self.show_toast(format!("Delete failed: {}", e)),
+                }
+            }
+        }
+    }
+
     fn exec_prompt_action(&mut self, action: &str, value: &str) {
         match action {
             "rename_session" => {
                 if value.is_empty() { return; }
+                let id = self.session.try_lock().map(|s| s.id.clone()).unwrap_or_default();
+                if let Some(store) = &self.store {
+                    if let Err(e) = store.rename_session(&id, value) {
+                        self.show_toast(format!("Rename failed: {}", e));
+                        return;
+                    }
+                }
                 self.show_toast(format!("Session renamed to: {}", value));
             }
             _ => {
@@ -1005,6 +1049,15 @@ impl TuiApp {
             "rename" => {
                 let current_title = self.session.try_lock().map(|s| s.id.clone()).unwrap_or_default();
                 self.show_prompt("Rename Session".to_string(), "rename_session".to_string(), current_title);
+            }
+            "delete_session" => {
+                let id = self.session.try_lock().map(|s| s.id.clone()).unwrap_or_default();
+                let short = if id.len() > 8 { &id[..8] } else { &id };
+                self.show_confirm(
+                    "Delete Session".to_string(),
+                    format!("Permanently delete session {}? This cannot be undone.", short),
+                    format!("delete_session:{}", id),
+                );
             }
             "quit" => {
                 self.quit = true;
@@ -1809,6 +1862,10 @@ impl TuiApp {
                 KeyCode::Char('w') => {
                     self.push_dialog(ActiveDialog::Workspace);
                 }
+                KeyCode::Char('r') => {
+                    let current_title = self.session.try_lock().map(|s| s.id.clone()).unwrap_or_default();
+                    self.show_prompt("Rename Session".to_string(), "rename_session".to_string(), current_title);
+                }
                 KeyCode::Char('?') => {
                     self.push_dialog(ActiveDialog::Status {
                         options: self.build_status_options(),
@@ -2520,7 +2577,7 @@ impl TuiApp {
         let title = if self.pending_perm.is_some() {
             " Approve? (y=allow / n=deny) ".to_string()
         } else if self.leader_mode {
-            " Leader: (b)ar (k)ommand (w)orkspace (f)iles (s)essions (m)odel (a)gent (t)heme (h)elp (p)rompt (c)MCP (/)plan (n)ew (d)iff (e)dit (q)uit (?)status ".to_string()
+            " Leader: (b)ar (k)ommand (w)orkspace (r)ename (f)iles (s)essions (m)odel (a)gent (t)heme (h)elp (p)rompt (c)MCP (/)plan (n)ew (d)iff (e)dit (q)uit (?)status ".to_string()
         } else if !self.autocomplete_candidates.is_empty() {
             let idx = self.autocomplete_idx.max(0) as usize;
             let total = self.autocomplete_candidates.len();
@@ -2690,6 +2747,7 @@ impl TuiApp {
             "  b  Toggle sidebar",
             "  k  Command palette",
             "  w  Workspace info",
+            "  r  Rename session",
             "  f  Insert /diagnostics",
             "  s  Session list (dialog)",
             "  /  Plan mode",
