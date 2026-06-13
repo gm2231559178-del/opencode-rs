@@ -91,6 +91,7 @@ pub struct TuiApp {
     pub reasoning_visible: bool,
     pub collapsed: std::collections::HashSet<usize>,
     pub toast: Option<(String, u8)>,
+    pub show_timestamps: bool,
     pub leader_mode: bool,
     pub file_watcher_rx: Option<std_mpsc::Receiver<String>>,
     pub diff_viewer: Option<(Vec<String>, usize)>,  // (lines, scroll_offset)
@@ -112,6 +113,7 @@ pub struct TuiMessage {
     pub role: String,
     pub content: String,
     pub age: u8,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
 }
 
 const SLASH_COMMANDS: &[&str] = &[
@@ -164,6 +166,7 @@ impl TuiApp {
             reasoning_visible: true,
             collapsed: std::collections::HashSet::new(),
             toast: None,
+            show_timestamps: false,
             leader_mode: false,
             file_watcher_rx: None,
             diff_viewer: None,
@@ -299,7 +302,7 @@ impl TuiApp {
                         let needs_new = self.messages.last().map(|m| m.role != "assistant").unwrap_or(true);
                         if needs_new {
                             self.messages.push(TuiMessage {
-                                age: 0,
+                                age: 0, timestamp: chrono::Utc::now(),
                                 role: "assistant".to_string(),
                                 content: delta,
                             });
@@ -322,7 +325,7 @@ impl TuiApp {
                         let icon = crate::util::tool_display::tool_icon(&name);
                         let hname = crate::util::tool_display::human_name(&name);
                         self.messages.push(TuiMessage {
-            age: 0,
+            age: 0, timestamp: chrono::Utc::now(),
                             role: "tool_call".to_string(),
                             content: format!("{} {} ({})\n{}", icon, hname, short, preview),
                         });
@@ -331,7 +334,7 @@ impl TuiApp {
                         let args_str = serde_json::to_string_pretty(&args).unwrap_or_default();
                         let preview: String = args_str.chars().take(200).collect();
                         self.messages.push(TuiMessage {
-            age: 0,
+            age: 0, timestamp: chrono::Utc::now(),
                             role: "tool_call".to_string(),
                             content: format!("{} (AWAITING APPROVAL)\n{}", tool_name, preview),
                         });
@@ -354,7 +357,7 @@ impl TuiApp {
                             format!("{} ({} chars)\n{}", name, output.len(), preview)
                         };
                         self.messages.push(TuiMessage {
-            age: 0,
+            age: 0, timestamp: chrono::Utc::now(),
                             role: "tool_result".to_string(),
                             content,
                         });
@@ -367,7 +370,7 @@ impl TuiApp {
                         if !self.reasoning.is_empty() {
                             let reasoning = std::mem::take(&mut self.reasoning);
                             self.messages.push(TuiMessage {
-                                age: 0,
+                                age: 0, timestamp: chrono::Utc::now(),
                                 role: "reasoning".to_string(),
                                 content: reasoning,
                             });
@@ -385,7 +388,7 @@ impl TuiApp {
                                 msg.content = response.trim().to_string();
                             } else {
                                 self.messages.push(TuiMessage {
-                                    age: 0,
+                                    age: 0, timestamp: chrono::Utc::now(),
                                     role: "assistant".to_string(),
                                     content: response.trim().to_string(),
                                 });
@@ -416,7 +419,7 @@ impl TuiApp {
                             msg.content = format!("Error: {}", message);
                         } else {
                             self.messages.push(TuiMessage {
-            age: 0,
+            age: 0, timestamp: chrono::Utc::now(),
                                 role: "assistant".to_string(),
                                 content: format!("Error: {}", message),
                             });
@@ -1434,7 +1437,7 @@ impl TuiApp {
         };
         if !response.is_empty() {
             self.messages.push(TuiMessage {
-                age: 0,
+                age: 0, timestamp: chrono::Utc::now(),
                 role: "assistant".to_string(),
                 content: response,
             });
@@ -1580,13 +1583,13 @@ impl TuiApp {
                     Ok(mut ctx) => {
                         if ctx.set_text(msg.content.clone()).is_ok() {
                             self.messages.push(TuiMessage {
-                                age: 0,
+                                age: 0, timestamp: chrono::Utc::now(),
                                 role: "assistant".to_string(),
                                 content: "Last response copied to clipboard.".to_string(),
                             });
                         } else {
                             self.messages.push(TuiMessage {
-                                age: 0,
+                                age: 0, timestamp: chrono::Utc::now(),
                                 role: "assistant".to_string(),
                                 content: "Failed to copy to clipboard.".to_string(),
                             });
@@ -1594,7 +1597,7 @@ impl TuiApp {
                     }
                     Err(_) => {
                         self.messages.push(TuiMessage {
-                            age: 0,
+                            age: 0, timestamp: chrono::Utc::now(),
                             role: "assistant".to_string(),
                             content: "Clipboard not available.".to_string(),
                         });
@@ -1603,7 +1606,7 @@ impl TuiApp {
             }
             _ => {
                 self.messages.push(TuiMessage {
-                    age: 0,
+                    age: 0, timestamp: chrono::Utc::now(),
                     role: "assistant".to_string(),
                     content: "No response to copy.".to_string(),
                 });
@@ -1949,6 +1952,14 @@ impl TuiApp {
                     "Reasoning hidden".to_string()
                 });
             }
+            KeyCode::Char('t') if key.modifiers.contains(KeyModifiers::CONTROL) && !self.streaming => {
+                self.show_timestamps = !self.show_timestamps;
+                self.show_toast(if self.show_timestamps {
+                    "Timestamps visible".to_string()
+                } else {
+                    "Timestamps hidden".to_string()
+                });
+            }
             KeyCode::Char('o') if !self.streaming && self.input.is_empty() => {
                 self.toggle_collapse_last_tool();
                 let has_collapsed = self.collapsed.iter().any(|&idx| {
@@ -1991,7 +2002,7 @@ impl TuiApp {
                     self.history_index = -1;
                     self.saved_input.clear();
                     self.messages.push(TuiMessage {
-                        age: 0,
+                        age: 0, timestamp: chrono::Utc::now(),
                         role: "user".to_string(),
                         content: msg.clone(),
                     });
@@ -2004,7 +2015,7 @@ impl TuiApp {
 
                     self.prompt_count += 1;
                     self.messages.push(TuiMessage {
-                        age: 0,
+                        age: 0, timestamp: chrono::Utc::now(),
                         role: "assistant".to_string(),
                         content: "...".to_string(),
                     });
@@ -2535,6 +2546,16 @@ impl TuiApp {
 
                 let mut lines = vec![Line::from(vec![bar, spinner, pad])];
 
+                // Optional timestamp
+                if self.show_timestamps {
+                    let ts = m.timestamp.format("%H:%M:%S").to_string();
+                    lines.push(Line::from(vec![
+                        Span::styled("▎", bar_style),
+                        Span::raw(" "),
+                        Span::styled(ts, Style::default().fg(t.text_muted).add_modifier(Modifier::DIM)),
+                    ]));
+                }
+
                 let content_width = w.saturating_sub(4);
                 if m.role == "assistant" || m.role == "reasoning" {
                     Self::render_highlighted(&display_content, content_width, &mut lines, t);
@@ -3022,6 +3043,7 @@ impl TuiApp {
             "  Ctrl+Y         Copy last response",
             "  Ctrl+E         Open last edited file in $EDITOR",
             "  Ctrl+R         Toggle reasoning visibility",
+            "  Ctrl+T         Toggle timestamps",
             "  Ctrl+B         Toggle sidebar",
             "  Ctrl+P         Command palette",
             "  Ctrl+O         Toggle tool output collapse",
