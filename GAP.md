@@ -52,7 +52,7 @@ Real feature gaps between the Rust reimplementation and the original [opencode](
 | Daemon/service management | `[ ]` | `packages/cli/src/services/daemon.ts` | Background server, password auth, health checks |
 | HTTP server API completeness | `[~]` | `packages/cli/src/commands/handlers/serve.ts` | Rust has 3 routes, original has 16 API groups |
 | WebSocket transport | `[ ]` | `packages/cli/src/services/daemon.ts` | Real-time streaming via WS upgrade |
-| File watcher | `[ ]` | `packages/core/src/filesystem/watcher.ts` | `@parcel/watcher`-based |
+| File watcher | `[x]` | `packages/core/src/filesystem/watcher.ts` | `notify`-based recursive watcher, toast on change |
 | LSP integration depth | `[~]` | `packages/core/src/lsp/` | Rust has basic `/diagnostics` only; missing goToDef, hover, references |
 | MCP OAuth flow | `[ ]` | `packages/core/src/config/mcp.ts` | client_id/secret/scope/callback_port for remote MCP |
 | Plugin system depth | `[~]` | `packages/core/src/plugin/` | Rust has simple process plugins; missing boot, env, provider, skill, TUI plugins |

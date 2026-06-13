@@ -13,8 +13,10 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Wrap};
 use ratatui::Frame;
 use std::io;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::mpsc as std_mpsc;
 use std::time::Duration;
 use tokio::sync::{mpsc, Mutex};
 
@@ -48,6 +50,7 @@ pub struct TuiApp {
     pub collapsed: std::collections::HashSet<usize>,
     pub toast: Option<(String, u8)>,
     pub leader_mode: bool,
+    pub file_watcher_rx: Option<std_mpsc::Receiver<String>>,
 }
 
 #[derive(Clone)]
@@ -99,6 +102,7 @@ impl TuiApp {
             collapsed: std::collections::HashSet::new(),
             toast: None,
             leader_mode: false,
+            file_watcher_rx: None,
         }
     }
 
@@ -108,6 +112,11 @@ impl TuiApp {
         stdout.execute(EnterAlternateScreen)?;
 
         let mut terminal = ratatui::Terminal::new(ratatui::backend::CrosstermBackend::new(stdout))?;
+
+        // Start file watcher for the current directory
+        if let Ok(cwd) = std::env::current_dir() {
+            self.start_file_watcher(&cwd.to_string_lossy());
+        }
 
         let result = self.run_loop(&mut terminal).await;
 
@@ -124,6 +133,7 @@ impl TuiApp {
     ) -> Result<()> {
         while !self.quit {
             self.poll_stream();
+            self.poll_file_watcher();
 
             terminal.draw(|f| self.render(f))?;
 
@@ -138,6 +148,56 @@ impl TuiApp {
             }
         }
         Ok(())
+    }
+
+    fn start_file_watcher(&mut self, watch_dir: &str) {
+        use notify::{Config, Event, EventKind, RecursiveMode, Watcher};
+        let (tx, rx) = std_mpsc::channel();
+        let dir = watch_dir.to_string();
+        std::thread::spawn(move || {
+            let mut watcher = match notify::RecommendedWatcher::new(
+                move |res: Result<Event, notify::Error>| {
+                    if let Ok(event) = res {
+                        let paths: Vec<String> = event
+                            .paths
+                            .iter()
+                            .filter_map(|p| p.file_name().and_then(|n| n.to_str()).map(|s| s.to_string()))
+                            .collect();
+                        if !paths.is_empty() {
+                            let msg = format!("File changed: {}", paths.join(", "));
+                            let _ = tx.send(msg);
+                        }
+                    }
+                },
+                Config::default(),
+            ) {
+                Ok(w) => w,
+                Err(_) => return,
+            };
+            if let Err(e) = watcher.watch(Path::new(&dir), RecursiveMode::Recursive) {
+                eprintln!("File watcher error: {}", e);
+                return;
+            }
+            loop {
+                std::thread::sleep(Duration::from_secs(1));
+            }
+        });
+        self.file_watcher_rx = Some(rx);
+    }
+
+    fn poll_file_watcher(&mut self) {
+        while let Some(rx) = &self.file_watcher_rx {
+            match rx.try_recv() {
+                Ok(msg) => {
+                    self.show_toast(msg);
+                }
+                Err(std_mpsc::TryRecvError::Empty) => break,
+                Err(std_mpsc::TryRecvError::Disconnected) => {
+                    self.file_watcher_rx = None;
+                    break;
+                }
+            }
+        }
     }
 
     fn poll_stream(&mut self) {
