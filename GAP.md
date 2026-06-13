@@ -27,11 +27,11 @@ Real feature gaps between the Rust reimplementation and the original [opencode](
 
 | Gap | Status | Original location | Notes |
 |-----|--------|-------------------|-------|
-| Sidebar plugins (files, MCP, LSP, todos, context) | `[~]` | `packages/tui/src/feature-plugins/sidebar/` | Toggleable left panel with 5 collapsible sections; Ctrl+B / leader+b |
-| Command palette | `[~]` | `packages/tui/src/component/command-palette.tsx` | Popup dialog with categorized commands; Ctrl+P / leader+k |
+| Sidebar plugins (files, MCP, LSP, todos, context) | `[x]` | `packages/tui/src/feature-plugins/sidebar/` | Toggleable left panel with 5 collapsible sections; Ctrl+B / leader+b; background_panel styling |
+| Command palette | `[x]` | `packages/tui/src/component/command-palette.tsx` | Popup dialog with categorized commands; Ctrl+P / leader+k |
 | Leader key system | `[x]` | `packages/tui/src/keymap.tsx` | Space leader key shows menu; f/s/m/a/t/h/p/c/%/n/d/e/q/? actions |
-| Dialogs (agent, model, theme, session, MCP, stash, skill, status, help, workspace, command, prompt) | `[~]` | `packages/tui/src/component/dialog-*.tsx` | 14 dialog types; confirm executes actions (new/delete session), y/n key support |
-| Autocomplete (`@` file, `#L` lines, frecency, references) | `[~]` | `packages/tui/src/component/prompt/autocomplete.tsx` | `@` triggers fd + directory indicator + reference candidates |
+| Dialogs (agent, model, theme, session, MCP, stash, skill, status, help, workspace, command, prompt) | `[x]` | `packages/tui/src/component/dialog-*.tsx` | All 14 dialog types with category grouping, filter, panel bg, footer hints |
+| Autocomplete (`@` file, `#L` lines, frecency, references) | `[x]` | `packages/tui/src/component/prompt/autocomplete.tsx` | Popup list with type icons; `#L` suffix preserved; fd search + ref candidates |
 | Thinking/reasoning display | `[x]` | `packages/tui/src/context/thinking.ts` | Collapsible reasoning blocks, Ctrl+R toggle |
 | Diff viewer (side-by-side/stacked) | `[x]` | `packages/tui/src/feature-plugins/system/diff-viewer.tsx` | Scrollable overlay with +/- colors, arrow/PgUp/PgDn/Home/End |
 | Audio/sound system | `[ ]` | `packages/tui/src/audio.ts` | Events: question, permission, error, done |
@@ -40,9 +40,9 @@ Real feature gaps between the Rust reimplementation and the original [opencode](
 | Syntax highlighting | `[x]` | `packages/tui/src/context/theme.ts` | Code blocks in assistant messages parsed and colorized |
 | Toast notifications | `[x]` | `packages/tui/src/ui/toastx.ts` | Inline toasts for actions (Ctrl+Y, Ctrl+R, Ctrl+O) |
 | Scroll acceleration | `[x]` | `packages/tui/src/util/scroll.ts` | PageUp/PageDown |
-| Multi-line input | `[x]` | `packages/tui/` | Shift+Enter newline, Ctrl+Enter submit |
+| Multi-line input | `[x]` | `packages/tui/` | Shift+Enter newline, Enter submit |
 | Tool output collapse | `[x]` | `packages/tui/src/util/collapse-tool-output.ts` | Ctrl+O collapse/expand |
-| Fade-in animations | `[~]` | `packages/tui/src/util/signal.ts` | Age-based dim ramp (0→10 frames) for new assistant/reasoning messages |
+| Fade-in animations | `[x]` | `packages/tui/src/util/signal.ts` | Age-based dim ramp (0→10 frames) for new assistant/reasoning messages |
 
 ## P2 — Infrastructure
 

@@ -7,6 +7,7 @@ use arboard::Clipboard;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen};
 use crossterm::ExecutableCommand;
+use notify_rust::Notification;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -74,7 +75,9 @@ pub struct TuiApp {
     pub pending_response: String,
     pub streaming: bool,
     pub cancelled: Arc<AtomicBool>,
+    pub notify: bool,
     pub model_name: String,
+    pub agent_name: String,
     pub prompt_count: usize,
     pub perm_tx: mpsc::UnboundedSender<(String, PermissionAction)>,
     pub pending_perm: Option<String>,
@@ -84,7 +87,6 @@ pub struct TuiApp {
     pub autocomplete_idx: isize,
     pub theme: &'static Theme,
     pub theme_name: String,
-    pub notify: bool,
     pub reasoning: String,
     pub reasoning_visible: bool,
     pub collapsed: std::collections::HashSet<usize>,
@@ -145,7 +147,9 @@ impl TuiApp {
             pending_response: String::new(),
             streaming: false,
             cancelled: Arc::new(AtomicBool::new(false)),
+            notify: true,
             model_name,
+            agent_name: String::new(),
             prompt_count: 0,
             perm_tx: mpsc::unbounded_channel().0,
             pending_perm: None,
@@ -155,7 +159,6 @@ impl TuiApp {
             autocomplete_idx: -1,
             theme: &crate::theme::DEFAULT,
             theme_name: "default".to_string(),
-            notify: true,
             reasoning: String::new(),
             reasoning_visible: true,
             collapsed: std::collections::HashSet::new(),
@@ -286,9 +289,11 @@ impl TuiApp {
                     StreamEvent::Reasoning { delta } => {
                         self.reasoning.push_str(&delta);
                         self.context_tokens += delta.len() / 4;
+                        self.context_percent = ((self.context_tokens as f64 / 100000.0) * 100.0) as u8;
                     }
                     StreamEvent::Text { delta } => {
                         self.context_tokens += delta.len() / 4;
+                        self.context_percent = ((self.context_tokens as f64 / 100000.0) * 100.0) as u8;
                         let needs_new = self.messages.last().map(|m| m.role != "assistant").unwrap_or(true);
                         if needs_new {
                             self.messages.push(TuiMessage {
@@ -309,6 +314,8 @@ impl TuiApp {
                         let short = if id.len() > 8 { &id[..8] } else { &id };
                         let args_str = serde_json::to_string_pretty(&arguments)
                             .unwrap_or_default();
+                        self.context_tokens += args_str.len() / 4;
+                        self.context_percent = ((self.context_tokens as f64 / 100000.0) * 100.0) as u8;
                         let preview: String = args_str.chars().take(400).collect();
                         self.messages.push(TuiMessage {
             age: 0,
@@ -350,8 +357,7 @@ impl TuiApp {
                     }
                     StreamEvent::Done { response } => {
                         if self.notify {
-                            let _ = print!("\x07");
-                            let _ = io::Write::flush(&mut io::stdout());
+                            send_notification("OpenCode", "Response complete");
                         }
 
                         if !self.reasoning.is_empty() {
@@ -383,11 +389,23 @@ impl TuiApp {
                         }
                         self.pending_response.clear();
                         done = true;
+                        if self.context_tokens > 50000 {
+                            let removed = {
+                                let guard = self.session.try_lock();
+                                match guard {
+                                    Ok(mut s) => s.compact_messages(),
+                                    Err(_) => 0,
+                                }
+                            };
+                            if removed > 0 {
+                                self.context_tokens = self.context_tokens / 2;
+                                self.toast = Some((format!("Auto-compacted: removed {} messages", removed), 80));
+                            }
+                        }
                     }
                     StreamEvent::Error { message } => {
                         if self.notify {
-                            let _ = print!("\x07");
-                            let _ = io::Write::flush(&mut io::stdout());
+                            send_notification("OpenCode Error", &message);
                         }
                         let updated = self.messages.iter_mut().rev().find(|m| m.role == "assistant");
                         if let Some(msg) = updated {
@@ -1528,8 +1546,9 @@ impl TuiApp {
         if let Ok(mut session) = self.session.try_lock() {
             let cfg = session.config.agent.get(&name).cloned();
             match cfg {
-                Some(cfg) => {
-                    if let Some(model) = &cfg.model {
+                    Some(cfg) => {
+                        self.agent_name = name.clone();
+                        if let Some(model) = &cfg.model {
                         session.model = model.clone();
                         self.model_name = model.clone();
                     }
@@ -1947,7 +1966,12 @@ impl TuiApp {
             KeyCode::Enter if !self.autocomplete_candidates.is_empty() => {
                 self.apply_autocomplete();
             }
-            KeyCode::Enter if !self.streaming && !key.modifiers.contains(KeyModifiers::SHIFT) => {
+            KeyCode::Enter if key.modifiers.contains(KeyModifiers::SHIFT) => {
+                let c = self.cursor;
+                self.input.insert(c, '\n');
+                self.cursor = c + 1;
+            }
+            KeyCode::Enter if !self.streaming => {
                 self.cancelled.store(false, Ordering::SeqCst);
                 let input = std::mem::take(&mut self.input);
                 self.cursor = 0;
@@ -2097,6 +2121,9 @@ impl TuiApp {
 
     fn render(&mut self, f: &mut Frame) {
         let has_toast = self.toast.is_some();
+        let has_ac = !self.autocomplete_candidates.is_empty();
+        let ac_count = self.autocomplete_candidates.len();
+        let ac_height = if has_ac { (ac_count + 1).min(10) as u16 } else { 0 };
 
         // When sidebar is visible, split horizontally first
         let main_area = if self.sidebar_visible {
@@ -2115,32 +2142,39 @@ impl TuiApp {
             self.refresh_sidebar_data();
         }
 
-        // Now split the main area vertically
+        // Build vertical constraints with toast row and autocomplete popup if active
+        let mut constraints = Vec::new();
+        constraints.push(Constraint::Min(1)); // messages
         if has_toast {
-            let chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([
-                    Constraint::Min(1),
-                    Constraint::Length(1),
-                    Constraint::Length(1),
-                    Constraint::Length(3),
-                ])
-                .split(main_area);
-            self.render_messages(f, chunks[0]);
-            if let Some((ref msg, _)) = self.toast {
-                self.render_toast(f, chunks[1], msg);
-            }
-            self.render_status(f, chunks[2]);
-            self.render_input(f, chunks[3]);
-        } else {
-            let chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([Constraint::Min(1), Constraint::Length(1), Constraint::Length(3)])
-                .split(main_area);
-            self.render_messages(f, chunks[0]);
-            self.render_status(f, chunks[1]);
-            self.render_input(f, chunks[2]);
+            constraints.push(Constraint::Length(1)); // toast
         }
+        constraints.push(Constraint::Length(1)); // status
+        if has_ac {
+            constraints.push(Constraint::Length(ac_height)); // autocomplete popup
+        }
+        constraints.push(Constraint::Length(5)); // input
+
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints(constraints)
+            .split(main_area);
+
+        let mut ci = 0;
+        self.render_messages(f, chunks[ci]);
+        ci += 1;
+        if has_toast {
+            if let Some((ref msg, _)) = self.toast {
+                self.render_toast(f, chunks[ci], msg);
+            }
+            ci += 1;
+        }
+        self.render_status(f, chunks[ci]);
+        ci += 1;
+        if has_ac {
+            self.render_autocomplete_popup(f, chunks[ci], &self.autocomplete_candidates, self.autocomplete_idx);
+            ci += 1;
+        }
+        self.render_input(f, chunks[ci]);
 
         // Decrement toast counter for next frame
         if let Some((_, ref mut count)) = self.toast {
@@ -2409,6 +2443,13 @@ impl TuiApp {
             Style::default().fg(if self.streaming { t.success } else { t.text_muted }),
         );
         let mut spans = vec![left, Span::styled(" │ ", Style::default().fg(t.border)), right];
+        if !self.agent_name.is_empty() {
+            spans.push(Span::styled(" │ ", Style::default().fg(t.border)));
+            spans.push(Span::styled(
+                format!(" {} ", self.agent_name),
+                Style::default().fg(t.secondary).add_modifier(Modifier::BOLD),
+            ));
+        }
         if self.plan_mode {
             spans.push(Span::styled(" │ ", Style::default().fg(t.border)));
             spans.push(mode_tag);
@@ -2466,7 +2507,7 @@ impl TuiApp {
 
                 let mut fade_dim = false;
                 if m.age < 10 && (m.role == "assistant" || m.role == "reasoning") {
-                    let fade = (m.age as f32 / 10.0);
+                    let fade = m.age as f32 / 10.0;
                     if fade < 0.5 {
                         fade_dim = true;
                     }
@@ -2525,7 +2566,6 @@ impl TuiApp {
 
     fn render_highlighted(content: &str, width: usize, out: &mut Vec<Line>) {
         let t = &crate::theme::DEFAULT; // Uses global DEFAULT for syntax; actual theme colors are set at the caller
-        let code_style = Style::default().fg(t.dim).add_modifier(Modifier::DIM);
         let fence_style = Style::default().fg(t.border).add_modifier(Modifier::DIM);
         let lang_style = Style::default().fg(t.tool_call);
         let text_style = Style::default().fg(t.text);
@@ -2580,7 +2620,7 @@ impl TuiApp {
         }
     }
 
-    fn render_code_block(code: &str, width: usize, fence_style: Style, out: &mut Vec<Line>) {
+    fn render_code_block(code: &str, width: usize, _fence_style: Style, out: &mut Vec<Line>) {
         let t = &crate::theme::DEFAULT;
         let code_style = Style::default().fg(t.dim).add_modifier(Modifier::DIM);
         let diff_add = Style::default().fg(t.success).add_modifier(Modifier::DIM);
@@ -2603,6 +2643,47 @@ impl TuiApp {
         }
     }
 
+    fn render_autocomplete_popup(&self, f: &mut Frame, area: Rect, candidates: &[String], idx: isize) {
+        let t = self.theme;
+        let is_slash = self.input.starts_with('/') && !self.input.contains(' ');
+        let header = if is_slash { " Commands " } else { " @ Files " };
+
+        let items: Vec<Line> = candidates
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                let (icon, name) = if let Some(r) = c.strip_prefix("ref:") {
+                    (" ~ ", r)
+                } else if is_slash {
+                    (" / ", c.as_str())
+                } else {
+                    (" > ", c.as_str())
+                };
+                let selected = i as isize == idx;
+                let style = if selected {
+                    Style::default().fg(t.text).bg(t.accent)
+                } else {
+                    Style::default().fg(t.text).bg(t.background_panel)
+                };
+                let dim = if selected { Modifier::empty() } else { Modifier::DIM };
+                Line::from(vec![
+                    Span::styled(icon, style.add_modifier(dim)),
+                    Span::styled(name, style.add_modifier(dim)),
+                ])
+            })
+            .collect();
+
+        let border_style = Style::default().fg(t.border_active);
+        let block = Block::default()
+            .title(header)
+            .borders(Borders::ALL)
+            .border_style(border_style)
+            .style(Style::default().bg(t.background_panel));
+
+        let list = Paragraph::new(items).block(block);
+        f.render_widget(list, area);
+    }
+
     fn render_input(&self, f: &mut Frame, area: Rect) {
         let t = self.theme;
         let title = if self.pending_perm.is_some() {
@@ -2610,17 +2691,11 @@ impl TuiApp {
         } else if self.leader_mode {
             " Leader: (b)ar (k)ommand (w)orkspace (r)ename (f)iles (s)essions (m)odel (a)gent (t)heme (h)elp (p)rompt (c)MCP (/)plan (n)ew (d)iff (e)dit (q)uit (?)status ".to_string()
         } else if !self.autocomplete_candidates.is_empty() {
-            let idx = self.autocomplete_idx.max(0) as usize;
-            let total = self.autocomplete_candidates.len();
-            let preview = if idx < total {
-                &self.autocomplete_candidates[idx]
-            } else {
-                ""
-            };
             format!(
-                " {} ({}/{}) {} ",
+                " {} ({}/{}) ",
                 if self.input.starts_with('/') && !self.input.contains(' ') { "Commands" } else { "@ files" },
-                idx + 1, total, preview
+                self.autocomplete_idx.max(0) as usize + 1,
+                self.autocomplete_candidates.len()
             )
         } else {
             let hint = if self.input.contains('\n') {
@@ -2752,6 +2827,7 @@ impl TuiApp {
         ];
 
         let para = Paragraph::new(lines)
+            .style(Style::default().bg(t.background_panel))
             .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(t.primary)));
         f.render_widget(Clear, inner);
         f.render_widget(para, inner);
@@ -2811,8 +2887,10 @@ impl TuiApp {
         }).collect();
 
         let para = Paragraph::new(text)
+            .style(Style::default().bg(t.background_panel))
             .block(Block::default().borders(Borders::ALL).title(" Help ").border_style(Style::default().fg(t.primary)));
         let inner = Self::centered_rect(area, 60, help_text.len() as u16 + 4);
+        f.render_widget(Clear, inner);
         f.render_widget(para, inner);
     }
 
@@ -2820,10 +2898,12 @@ impl TuiApp {
         let area = Self::dialog_area(f.area());
         let lines: usize = message.lines().count();
         let text = Paragraph::new(message.to_string())
+            .style(Style::default().bg(t.background_panel))
             .block(Block::default().borders(Borders::ALL)
                 .title(format!(" {} ", title))
                 .border_style(Style::default().fg(t.primary)));
         let inner = Self::centered_rect(area, 60, lines as u16 + 4);
+        f.render_widget(Clear, inner);
         f.render_widget(text, inner);
     }
 
@@ -2835,10 +2915,12 @@ impl TuiApp {
             Line::from(Span::styled("  (y)es / (n)o  ", Style::default().fg(t.warning).add_modifier(Modifier::BOLD))),
         ];
         let para = Paragraph::new(lines)
+            .style(Style::default().bg(t.background_panel))
             .block(Block::default().borders(Borders::ALL)
                 .title(format!(" {} ", title))
                 .border_style(Style::default().fg(t.warning)));
         let inner = Self::centered_rect(area, 50, 6);
+        f.render_widget(Clear, inner);
         f.render_widget(para, inner);
     }
 
@@ -2873,13 +2955,15 @@ impl TuiApp {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             "  Press any key to close  ",
-            Style::default().fg(t.warning).add_modifier(Modifier::BOLD),
+            Style::default().fg(t.text_dim).add_modifier(Modifier::DIM),
         )));
         let para = Paragraph::new(lines)
+            .style(Style::default().bg(t.background_panel))
             .block(Block::default().borders(Borders::ALL)
                 .title(" Workspace Info ")
                 .border_style(Style::default().fg(t.primary)));
         let inner = Self::centered_rect(area, 60, 12);
+        f.render_widget(Clear, inner);
         f.render_widget(para, inner);
     }
 
@@ -2894,39 +2978,87 @@ impl TuiApp {
     ) {
         let max_visible = 20usize;
         let scroll = if selected >= max_visible { selected - max_visible + 1 } else { 0 };
+        let total_str = options.len().to_string();
 
         let mut lines: Vec<Line> = Vec::new();
-        // Filter indicator
-        let filter_text = if !filter.is_empty() {
+
+        // Filter indicator row
+        let filter_display = if !filter.is_empty() {
             format!(" filter: {}", filter)
         } else {
-            " (type to filter)".to_string()
+            " type to filter".to_string()
         };
-        lines.push(Line::from(Span::styled(&filter_text, Style::default().fg(t.text_dim))));
+        lines.push(Line::from(vec![
+            Span::styled(filter_display, Style::default().fg(t.text_dim)),
+            Span::styled(
+                format!("  {} items", total_str),
+                Style::default().fg(t.text_dim).add_modifier(Modifier::DIM),
+            ),
+        ]));
         lines.push(Line::from(""));
 
-        // Option items
-        for (i, opt) in options.iter().enumerate().skip(scroll).take(max_visible) {
-            let is_sel = i == selected;
-            let style = if is_sel {
-                Style::default().fg(t.bg).bg(t.primary)
-            } else {
-                Style::default().fg(t.text)
-            };
-            let prefix = if is_sel { "▸ " } else { "  " };
-            let cat = opt.category.as_deref().map(|c| format!(" [{}]", c)).unwrap_or_default();
-            let desc = opt.description.as_deref().map(|d| format!("  {}", d)).unwrap_or_default();
-            lines.push(Line::from(Span::styled(
-                format!("{}{}{}{}", prefix, opt.title, cat, desc), style,
-            )));
+        // Group items by category
+        struct Group<'a> {
+            name: &'a str,
+            items: Vec<(usize, &'a SelectOption)>,
         }
+        let mut groups: Vec<Group> = Vec::new();
+        let mut current_cat: Option<&str> = None;
+        for (i, opt) in options.iter().enumerate().skip(scroll).take(max_visible) {
+            let cat = opt.category.as_deref().unwrap_or("");
+            if current_cat != Some(cat) {
+                current_cat = Some(cat);
+                groups.push(Group { name: cat, items: Vec::new() });
+            }
+            if let Some(g) = groups.last_mut() {
+                g.items.push((i, opt));
+            }
+        }
+
+        for group in &groups {
+            // Category header
+            if !group.name.is_empty() {
+                let sep = "─".repeat(50);
+                lines.push(Line::from(vec![
+                    Span::styled(format!(" {}", group.name), Style::default().fg(t.accent).add_modifier(Modifier::BOLD)),
+                    Span::styled(sep, Style::default().fg(t.border).add_modifier(Modifier::DIM)),
+                ]));
+            }
+
+            // Items in this group
+            for &(i, opt) in &group.items {
+                let is_sel = i == selected;
+                let style = if is_sel {
+                    Style::default().fg(t.bg).bg(t.primary)
+                } else {
+                    Style::default().fg(t.text)
+                };
+                let prefix = if is_sel { " ▸ " } else { "   " };
+                let desc = opt.description.as_deref().map(|d| format!("  {}", d)).unwrap_or_default();
+                lines.push(Line::from(vec![
+                    Span::styled(prefix, if is_sel { Style::default().fg(t.primary) } else { Style::default().fg(t.text_dim) }),
+                    Span::styled(opt.title.to_string(), if is_sel { style } else { Style::default().fg(t.text) }),
+                    Span::styled(desc, Style::default().fg(t.text_dim).add_modifier(Modifier::DIM)),
+                ]));
+            }
+        }
+
+        // Footer
+        lines.push(Line::from(""));
+        lines.push(Line::from(vec![
+            Span::styled("  \u{2191}\u{2193} navigate", Style::default().fg(t.text_dim).add_modifier(Modifier::DIM)),
+            Span::styled("  Enter select", Style::default().fg(t.text_dim).add_modifier(Modifier::DIM)),
+            Span::styled("  Esc close", Style::default().fg(t.text_dim).add_modifier(Modifier::DIM)),
+        ]));
 
         let height = (lines.len() as u16 + 2).min(area.height.saturating_sub(2));
         let dialog_area = Self::centered_rect(area, 70, height);
         let para = Paragraph::new(lines)
+            .style(Style::default().bg(t.background_panel))
             .block(Block::default().borders(Borders::ALL)
                 .title(format!(" {} ", title))
                 .border_style(Style::default().fg(t.primary)));
+        f.render_widget(Clear, dialog_area);
         f.render_widget(para, dialog_area);
     }
 
@@ -2942,5 +3074,17 @@ impl TuiApp {
         let x = area.x + (area.width.saturating_sub(width)) / 2;
         let y = area.y + (area.height.saturating_sub(height)) / 3;
         Rect { x, y, width: width.min(area.width), height: height.min(area.height) }
+    }
+}
+
+fn send_notification(summary: &str, body: &str) {
+    if let Err(_) = Notification::new()
+        .summary(summary)
+        .body(body)
+        .timeout(3000)
+        .show()
+    {
+        let _ = print!("\x07");
+        let _ = io::Write::flush(&mut io::stdout());
     }
 }

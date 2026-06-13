@@ -14,13 +14,14 @@
 
 ## P1 — High (TUI usability)
 
-- `[~]` **Status bar** — Bottom bar with model badge, streaming indicator, plan/leader mode tags, proper background_element coloring.
+- `[x]` **Status bar** — Bottom bar with model badge, agent badge (secondary), streaming indicator, plan/leader mode tags, theme:count, proper background_element coloring.
 - `[x]` **Tool execution details** — Tool calls shown as `tool>` (yellow dim) and results as `result>` (dark gray dim) entries with arg previews.
+- `[x]` **Card-style messages** — Messages rendered with left border markers (▎) and role-colored backgrounds for visual hierarchy.
 - `[x]` **Input history** — Up/Down navigates previous prompts (`Vec<String>` with index tracking).
-- `[~]` **Theme colors** — Expanded to 20 tokens matching original visual language (background_panel, background_element, border_active, text_muted).
+- `[x]` **Theme colors** — Expanded to 20 tokens matching original visual language (background_panel, background_element, border_active, text_muted, secondary for agent tags).
 - `[x]` **Slash commands** — `/help`, `/new`, `/models`, `/sessions`, `/undo`, `/exit`, `/plan`, `/compact`, `/theme`, `/diff`, `/agent`, `/share`, `/share import`, `/share list`, `/stats`, `/mcp`, `/plugin`, `/diagnostics`, `/notify`, `/session load`, `/session fork`, `/session rename`, `/session delete` all implemented.
-- `[~]` **Multi-line input** — Enter submits, Esc clears. Shift+Enter newline not yet implemented.
-- `[ ]` **Copy last response** — Ctrl+Y or leader+y copies last assistant message to clipboard.
+- `[x]` **Multi-line input** — Enter submits, Shift+Enter inserts newline, Esc clears.
+- `[x]` **Copy last response** — Ctrl+Y / leader+y copies last assistant message to clipboard.
 
 ## P2 — Medium (feature parity)
 
@@ -32,14 +33,14 @@
 - `[x]` **Session management** — Continue (`/session load`), fork (`/session fork`), rename (`/session rename`), delete (`/session delete`) existing sessions.
 - `[x]` **Plan mode** — Read-only agent preset: `edit=deny`, `bash=ask`, `write=deny`, `apply_patch=deny`. Toggle from input (/plan).
 - `[x]` **Diff view** — Inline display of additions/removals for file edits (`/diff`).
-- `[~]` **Model/agent/theme picker dialogs** — Leader m/a/t opens selection dialogs with search, ↑/↓, Enter select.
-- `[~]` **Session list dialog** — Leader s opens saved sessions list with search and load.
-- `[~]` **MCP status dialog** — Leader c shows MCP tools connected with searchable list.
-- `[~]` **Stash/prompt dialog** — Leader p shows quick-access stashed commands.
-- `[~]` **Status overview dialog** — Leader ? shows session status (model, theme, plan mode, notifications, stats).
-- `[~]` **Help dialog** — Leader h shows keybindings summary.
-- `[ ]` **Context compaction** — Auto-trigger when approaching token limit. Manual via `/compact`.
-- `[~]` **File autocomplete** — `@` triggers fuzzy file search within the project + reference names.
+- `[x]` **Model/agent/theme picker dialogs** — Leader m/a/t opens selection dialogs with search, category grouping, footer hints.
+- `[x]` **Session list dialog** — Leader s opens saved sessions list with search.
+- `[x]` **MCP status dialog** — Leader c shows MCP tools connected with searchable list.
+- `[x]` **Stash/prompt dialog** — Leader p shows quick-access stashed commands.
+- `[x]` **Status overview dialog** — Leader ? shows session status (model, theme, plan mode, notifications, stats).
+- `[x]` **Help dialog** — Leader h shows keybindings summary.
+- `[x]` **Context compaction** — Auto-triggered when context tokens exceed 50k (streaming complete). Manual via `/compact`.
+- `[x]` **File autocomplete** — `@` triggers fuzzy file search via `fd` + reference names from config. `#L` line suffix preserved on selection.
 - `[ ]` **Subagents** — `@general`, `@explore`, `@scout` mention from input to delegate tasks.
 
 ## P3 — Low (infrastructure)
@@ -55,7 +56,7 @@
 - `[x]` **Plugin system** — Custom tools and commands via config-driven process plugins.
 - `[x]` **LSP integration** — `/diagnostics <file>` with per-extension LSP server launch.
 - `[x]` **Theme system** — Configurable colors (tokyonight, catppuccin, gruvbox, etc.).
-- `[ ]` **Notifications** — Desktop alerts when terminal is blurred (attention system).
+- `[x]` **Notifications** — Desktop alerts via notify-rust when response completes or error occurs (toggled via `/notify`). Falls back to terminal bell.
 
 ---
 
