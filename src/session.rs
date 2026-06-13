@@ -22,6 +22,12 @@ Available tools:
 - grep: Search file contents with regex
 - glob: Find files matching a pattern
 - task: Delegate work to a sub-agent for complex tasks
+- webfetch: Fetch content from URLs
+- websearch: Search the web for information
+- question: Ask the user questions
+- skill: Load specialized skill instructions
+- apply_patch: Apply structured patches to files
+- todowrite: Create and manage task lists
 
 Rules:
 1. Always use tools when you need to read or modify files.
@@ -226,12 +232,12 @@ impl Session {
     fn tool_permission(&self, name: &str) -> PermissionAction {
         if self.plan_mode {
             match name {
-                "bash" | "write" | "edit" => return PermissionAction::Deny,
+                "bash" | "write" | "edit" | "apply_patch" => return PermissionAction::Deny,
                 _ => return PermissionAction::Allow,
             }
         }
         match name {
-            "bash" | "write" | "edit" => PermissionAction::Ask,
+            "bash" | "write" | "edit" | "apply_patch" => PermissionAction::Ask,
             _ => PermissionAction::Allow,
         }
     }

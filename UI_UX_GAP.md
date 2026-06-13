@@ -10,41 +10,41 @@
 - `[x]` **Streaming** — Tokens rendered in real-time via channel-based event loop. `LLMProvider::stream()` → `mpsc::channel` → TUI draw loop.
 - `[x]` **Permission system** — `ask`/`allow`/`deny` per tool. TUI shows approval dialog (y/n) for `bash`/`edit`/`write` with `PermissionAction` channel.
 - `[x]` **Interrupt** — Escape key sets `AtomicBool` checked between tool calls and LLM requests.
-- `[x] **Undo** — File snapshots before `edit`/`write` (`read_to_string`). `/undo` restores via `undo_last()`. Redo not yet implemented.
+- `[x]` **Undo** — File snapshots before `edit`/`write` (`read_to_string`). `/undo` restores via `undo_last()`. Redo not yet implemented.
 
 ## P1 — High (TUI usability)
 
 - `[x]` **Status bar** — Bottom bar showing model name, prompt count, and idle/streaming state.
 - `[x]` **Tool execution details** — Tool calls shown as `tool>` (yellow dim) and results as `result>` (dark gray dim) entries with arg previews.
 - `[x]` **Input history** — Up/Down navigates previous prompts (`Vec<String>` with index tracking).
-- `[x]` **Slash commands** — `/help`, `/new`, `/models`, `/sessions`, `/undo`, `/exit` all implemented.
+- `[x]` **Slash commands** — `/help`, `/new`, `/models`, `/sessions`, `/undo`, `/exit`, `/plan`, `/compact`, `/theme`, `/diff`, `/agent`, `/share`, `/share import`, `/share list`, `/stats`, `/mcp`, `/plugin`, `/diagnostics`, `/notify`, `/session load`, `/session fork`, `/session rename`, `/session delete` all implemented.
 - `[~]` **Multi-line input** — Enter submits, Esc clears. Shift+Enter newline not yet implemented.
 - `[ ]` **Copy last response** — Ctrl+Y or leader+y copies last assistant message to clipboard.
 
 ## P2 — Medium (feature parity)
 
 - `[x]` **Session persistence** — SQLite-backed store (`~/.config/opencode-rs/sessions.db`). Auto-saves on Done/Error. `/sessions` lists recent sessions.
-- `[ ]` **Session management** — Continue, fork, rename, delete existing sessions.
-- `[ ]` **Plan mode** — Read-only agent preset: `edit=deny`, `bash=ask`. Toggle from input (Tab).
+- `[x]` **Session management** — Continue (`/session load`), fork (`/session fork`), rename (`/session rename`), delete (`/session delete`) existing sessions.
+- `[x]` **Plan mode** — Read-only agent preset: `edit=deny`, `bash=ask`, `write=deny`, `apply_patch=deny`. Toggle from input (/plan).
+- `[x]` **Diff view** — Inline display of additions/removals for file edits (`/diff`).
 - `[ ]` **Model/agent picker** — Dialog to switch model or agent mid-session (leader+m / leader+a).
 - `[ ]` **Context compaction** — Auto-trigger when approaching token limit. Manual via `/compact`.
-- `[ ]` **Diff view** — Inline display of additions/removals for file edits.
 - `[ ]` **File autocomplete** — `@` triggers fuzzy file search within the project.
 - `[ ]` **Subagents** — `@general`, `@explore`, `@scout` mention from input to delegate tasks.
 
 ## P3 — Low (infrastructure)
 
-- `[ ]` **HTTP server** — `opencode serve` with REST API + SSE event stream.
-- `[ ]` **ACP protocol** — Line-delimited JSON over stdin/stdout for IDE integration.
-- `[ ]` **Config merging** — Layered config: global → project → env var → CLI flag.
-- `[ ]` **Environment variables** — `OPENCODE_*` support (model, config path, permissions, etc.).
-- `[ ]` **Session sharing** — Share sessions via URL (opncd.ai/s/<id>).
-- `[ ]` **Stats tracking** — Token usage, cost, tool frequency (`opencode stats`).
-- `[ ]` **mDNS discovery** — Zero-config local network server discovery.
-- `[ ]` **MCP support** — Model Context Protocol servers (local + remote + OAuth).
-- `[ ]` **Plugin system** — Custom tools and commands via npm modules.
-- `[ ]` **LSP integration** — goToDefinition, findReferences, hover, etc.
-- `[ ]` **Theme system** — Configurable colors (tokyonight, catppuccin, gruvbox, etc.).
+- `[x]` **HTTP server** — `opencode serve` with axum-based REST API + endpoints `/health`, `/chat`, `/sessions`, `/sessions/:id`.
+- `[x]` **ACP protocol** — Line-delimited JSON-RPC over stdin/stdout. Methods: `chat`, `sessions/list`, `sessions/get`, `ping`.
+- `[x]` **Config merging** — Layered config: global → project → env var → CLI flag.
+- `[x]` **Environment variables** — `OPENCODE_*` support (model, api key, base url, permissions, etc.).
+- `[x]` **Session sharing** — Share sessions via `/share` (SQLite-backed `shared_sessions` table).
+- `[x]` **Stats tracking** — Token usage, cost, tool frequency (`/stats`, `UsageStats`).
+- `[x]` **mDNS discovery** — Zero-config local network server discovery via `mdns-sd`.
+- `[x]` **MCP support** — Model Context Protocol server connections via config-driven JSON-RPC.
+- `[x]` **Plugin system** — Custom tools and commands via config-driven process plugins.
+- `[x]` **LSP integration** — `/diagnostics <file>` with per-extension LSP server launch.
+- `[x]` **Theme system** — Configurable colors (tokyonight, catppuccin, gruvbox, etc.).
 - `[ ]` **Notifications** — Desktop alerts when terminal is blurred (attention system).
 
 ---
@@ -65,4 +65,4 @@ Add an `AtomicBool` (`cancelled`) shared between the agent loop and the TUI even
 Add a `permission` field to each tool's `execute()`. The session prompts the user via a dialog when the tool's action is `ask`. The dialog offers: allow-once, allow-always, reject.
 
 ### Snapshots
-Before any `edit` or `write` tool call, run `git add -A && git stash` (or similar) to snapshot the current state. On undo, reapply the snapshot.
+Before any `edit` or `write` tool call, save the original file content for undo. On `/undo`, restore the saved content.

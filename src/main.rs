@@ -46,7 +46,10 @@ async fn main() -> Result<()> {
                 println!("{}", serde_json::to_string_pretty(&cfg)?);
             }
             cli::ConfigAction::Set { key, value } => {
-                println!("Setting {} = {} (not yet implemented)", key, value);
+                match config::config_set(key, value) {
+                    Ok(msg) => println!("{}", msg),
+                    Err(e) => eprintln!("Error: {}", e),
+                }
             }
         },
         Some(cli::Commands::Serve { port }) => {

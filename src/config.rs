@@ -276,3 +276,62 @@ fn strip_jsonc_comments(input: &str) -> String {
     }
     result
 }
+
+pub fn config_set(key: &str, value: &str) -> Result<String> {
+    let cwd = std::env::current_dir()?;
+    let config_dir = cwd.join(".opencode");
+    let config_path = config_dir.join("opencode.jsonc");
+
+    let mut config: Config = if config_path.exists() {
+        let content = std::fs::read_to_string(&config_path)?;
+        serde_json::from_str(&strip_jsonc_comments(&content))?
+    } else {
+        Config::default()
+    };
+
+    match key {
+        "model" => config.model = Some(value.to_string()),
+        "shell" => config.shell = Some(value.to_string()),
+        "username" => config.username = Some(value.to_string()),
+        "instructions" => {
+            config.instructions = Some(vec![value.to_string()]);
+        }
+        "auto_approve" => {
+            config.permission.auto_approve = value.split(',').map(|s| s.trim().to_string()).collect();
+        }
+        "deny" => {
+            config.permission.deny = value.split(',').map(|s| s.trim().to_string()).collect();
+        }
+        _ => {
+            // Try provider.* or mcp.* or plugin.* or agent.* keys
+            if let Some(rest) = key.strip_prefix("provider.") {
+                if let Some((provider_name, field)) = rest.split_once('.') {
+                    let entry = config.provider.entry(provider_name.to_string()).or_default();
+                    match field {
+                        "api_key" => entry.api_key = Some(value.to_string()),
+                        "base_url" => entry.base_url = Some(value.to_string()),
+                        "default_model" => entry.default_model = Some(value.to_string()),
+                        _ => return Ok(format!("Unknown provider field: {}", field)),
+                    }
+                } else {
+                    config
+                        .provider
+                        .entry(rest.to_string())
+                        .or_default()
+                        .default_model = Some(value.to_string());
+                }
+            } else {
+                return Ok(format!("Unknown config key: {}. Supported keys: model, shell, username, instructions, auto_approve, deny, provider.<name>.api_key, provider.<name>.base_url", key));
+            }
+        }
+    }
+
+    std::fs::create_dir_all(&config_dir)?;
+
+    let output = serde_json::to_string_pretty(&config)?;
+    // Add jsonc header
+    let header = "// opencode-rs configuration\n// See https://opencode.ai for documentation\n\n";
+    std::fs::write(&config_path, format!("{}{}", header, output))?;
+
+    Ok(format!("Set {} = {} in {}", key, value, config_path.display()))
+}

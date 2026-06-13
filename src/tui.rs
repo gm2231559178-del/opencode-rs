@@ -257,6 +257,19 @@ impl TuiApp {
                 self.cmd_delete_session(id)
             }
             "/session fork" => self.cmd_fork_session(),
+            cmd if cmd.starts_with("/session rename ") => {
+                let parts: Vec<&str> = cmd.splitn(4, ' ').collect();
+                if parts.len() < 4 {
+                    "Usage: /session rename <id> <new_name>".to_string()
+                } else if let Some(store) = &self.store {
+                    match store.rename_session(parts[2], parts[3]) {
+                        Ok(()) => format!("Session {} renamed to '{}'", &parts[2][..8], parts[3]),
+                        Err(e) => format!("Rename failed: {}", e),
+                    }
+                } else {
+                    "Session store not available.".to_string()
+                }
+            }
             "/session new" => {
                 self.cmd_clear_session();
                 if let Ok(mut s) = self.session.try_lock() {
@@ -429,7 +442,7 @@ impl TuiApp {
                 self.theme_name = self.theme.name.to_string();
                 format!("Switched to theme: {}", self.theme.name)
             }
-            "/help" => "Available commands:\n  /help          - Show this help\n  /plan          - Toggle plan mode (read-only)\n  /compact       - Compact conversation history\n  /diff          - Show diff of last file edit\n  /theme         - Show current theme\n  /theme <name>  - Switch theme\n  /notify        - Toggle notification bell\n  /new           - Clear session\n  /model         - Show current model\n  /model <name>  - Switch model (e.g. /model openai/gpt-4o)\n  /agent         - Show available agents\n  /agent <name>  - Switch agent\n  /sessions      - List saved sessions\n  /session load <id>  - Load a saved session\n  /session fork       - Fork current session\n  /session delete <id> - Delete a session\n  /undo          - Undo last file change\n  /share         - Generate share link for this session\n  /share list    - List shared sessions\n  /share import <id> <secret> - Import a shared session\n  /stats         - Show usage statistics\n  /mcp           - Show MCP server connection status\n  /plugin        - Show plugin status\n  /diagnostics <file> - Run LSP diagnostics on a file\n  /exit          - Quit OpenCode".to_string(),
+            "/help" => "Available commands:\n  /help          - Show this help\n  /plan          - Toggle plan mode (read-only)\n  /compact       - Compact conversation history\n  /diff          - Show diff of last file edit\n  /theme         - Show current theme\n  /theme <name>  - Switch theme\n  /notify        - Toggle notification bell\n  /new           - Clear session\n  /model         - Show current model\n  /model <name>  - Switch model (e.g. /model openai/gpt-4o)\n  /agent         - Show available agents\n  /agent <name>  - Switch agent\n  /sessions      - List saved sessions\n  /session load <id>  - Load a saved session\n  /session fork       - Fork current session\n  /session rename <id> <name> - Rename a session\n  /session delete <id> - Delete a session\n  /undo          - Undo last file change\n  /share         - Generate share link for this session\n  /share list    - List shared sessions\n  /share import <id> <secret> - Import a shared session\n  /stats         - Show usage statistics\n  /mcp           - Show MCP server connection status\n  /plugin        - Show plugin status\n  /diagnostics <file> - Run LSP diagnostics on a file\n  /exit          - Quit OpenCode".to_string(),
             "/new" | "/clear" => self.cmd_clear_session(),
             "/models" => self.cmd_show_model(),
             "/model" => self.cmd_show_model(),

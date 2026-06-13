@@ -40,7 +40,7 @@ pub async fn run_server(config: Config, store: Option<SessionStore>, port: u16) 
         .route("/health", get(health))
         .route("/chat", post(chat))
         .route("/sessions", get(list_sessions))
-        .route("/sessions/:id", get(get_session))
+        .route("/sessions/{id}", get(get_session))
         .layer(CorsLayer::permissive())
         .with_state(state);
 

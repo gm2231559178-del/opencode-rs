@@ -1,6 +1,7 @@
 use anyhow::{bail, Result};
 use lsp_types::{
-    ClientCapabilities, Diagnostic, DiagnosticSeverity, InitializeParams,
+    ClientCapabilities, Diagnostic, InitializeParams,
+    PublishDiagnosticsParams,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -25,10 +26,15 @@ struct LspConnection {
     stdout: BufReader<tokio::process::ChildStdout>,
     next_id: u64,
     initialized: bool,
+    diagnostics: Arc<Mutex<HashMap<String, Vec<Diagnostic>>>>,
 }
 
 impl LspConnection {
-    async fn connect(command: &str, args: &[String]) -> Result<Self> {
+    async fn connect(
+        command: &str,
+        args: &[String],
+        diagnostics: Arc<Mutex<HashMap<String, Vec<Diagnostic>>>>,
+    ) -> Result<Self> {
         let mut child = Command::new(command)
             .args(args)
             .stdin(std::process::Stdio::piped())
@@ -45,6 +51,7 @@ impl LspConnection {
             stdout: BufReader::new(stdout),
             next_id: 1,
             initialized: false,
+            diagnostics,
         })
     }
 
@@ -81,8 +88,14 @@ impl LspConnection {
 
             if let Some(method) = response.get("method").and_then(|m| m.as_str()) {
                 if method == "textDocument/publishDiagnostics" {
-                    if let Some(_params) = response.get("params") {
-                        tracing::info!("LSP diagnostics received");
+                    if let Some(params_val) = response.get("params") {
+                        if let Ok(params) = serde_json::from_value::<PublishDiagnosticsParams>(params_val.clone()) {
+                            let uri = params.uri.to_string();
+                            let count = params.diagnostics.len();
+                            let mut map = self.diagnostics.lock().await;
+                            map.insert(uri, params.diagnostics);
+                            tracing::info!("LSP: stored {} diagnostics", count);
+                        }
                     }
                 }
             }
@@ -179,7 +192,8 @@ impl LspServer {
         root_uri: &str,
         language_id: &str,
     ) -> Result<Self> {
-        let mut conn = LspConnection::connect(command, args).await?;
+        let diagnostics: Arc<Mutex<HashMap<String, Vec<Diagnostic>>>> = Arc::new(Mutex::new(HashMap::new()));
+        let mut conn = LspConnection::connect(command, args, diagnostics.clone()).await?;
         conn.initialize(root_uri).await?;
 
         Ok(Self {
@@ -188,7 +202,7 @@ impl LspServer {
             command: command.to_string(),
             args: args.to_vec(),
             connection: Arc::new(Mutex::new(conn)),
-            diagnostics: Arc::new(Mutex::new(HashMap::new())),
+            diagnostics,
         })
     }
 
@@ -273,7 +287,8 @@ impl LspManager {
 
         let server = self.servers.iter().find(|s| s.server_id == server_id).unwrap();
         let diags = server.diagnostics.lock().await;
-        Ok(diags.get(file_path).cloned().unwrap_or_default())
+        let uri = format!("file://{}", std::path::Path::new(file_path).canonicalize().map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| file_path.to_string()));
+        Ok(diags.get(&uri).cloned().unwrap_or_default())
     }
 
     pub fn server_count(&self) -> usize {

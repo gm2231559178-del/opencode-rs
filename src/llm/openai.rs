@@ -134,7 +134,6 @@ fn build_chat_body(request: &LLMRequest) -> Value {
     }
 
     for msg in &request.messages {
-        let role = serde_json::to_value(&msg.role).unwrap();
 
         match msg.role {
             Role::System => {

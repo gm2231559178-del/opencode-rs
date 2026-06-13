@@ -21,6 +21,7 @@ pub struct SessionStore {
 #[derive(Debug, Clone, Serialize)]
 pub struct StoredSession {
     pub id: String,
+    pub name: Option<String>,
     pub model: String,
     pub system_prompt: String,
     pub cwd: String,
@@ -49,18 +50,25 @@ impl SessionStore {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 session_id TEXT NOT NULL REFERENCES sessions(id),
                 role TEXT NOT NULL,
-                content_json TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+                content_json TEXT NOT NULL DEFAULT '[]'
             );
-            CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
             CREATE TABLE IF NOT EXISTS shared_sessions (
                 id TEXT PRIMARY KEY,
-                session_id TEXT NOT NULL REFERENCES sessions(id),
+                session_id TEXT NOT NULL,
                 secret TEXT NOT NULL,
                 model TEXT NOT NULL DEFAULT '',
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );",
         )?;
+
+        // Migration: add name column if not present
+        let has_name = conn
+            .prepare("PRAGMA table_info(sessions)")?
+            .query_map([], |row| row.get::<_, String>(1))?
+            .any(|c| c.as_deref() == Ok("name"));
+        if !has_name {
+            conn.execute_batch("ALTER TABLE sessions ADD COLUMN name TEXT DEFAULT NULL;")?;
+        }
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -223,7 +231,7 @@ impl SessionStore {
     pub fn list_sessions(&self, limit: usize) -> Result<Vec<StoredSession>> {
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
-            "SELECT s.id, s.model, s.system_prompt, s.cwd, s.created_at, s.updated_at,
+            "SELECT s.id, s.name, s.model, s.system_prompt, s.cwd, s.created_at, s.updated_at,
                     (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id) as msg_count
              FROM sessions s
              ORDER BY s.updated_at DESC
@@ -233,17 +241,30 @@ impl SessionStore {
             .query_map(params![limit as i64], |row| {
                 Ok(StoredSession {
                     id: row.get(0)?,
-                    model: row.get(1)?,
-                    system_prompt: row.get(2)?,
-                    cwd: row.get(3)?,
-                    created_at: row.get(4)?,
-                    updated_at: row.get(5)?,
-                    message_count: row.get::<_, i64>(6)? as usize,
+                    name: row.get(1)?,
+                    model: row.get(2)?,
+                    system_prompt: row.get(3)?,
+                    cwd: row.get(4)?,
+                    created_at: row.get(5)?,
+                    updated_at: row.get(6)?,
+                    message_count: row.get::<_, i64>(7)? as usize,
                 })
             })?
             .filter_map(|r| r.ok())
             .collect();
         Ok(sessions)
+    }
+
+    pub fn rename_session(&self, id: &str, name: &str) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        let updated = conn.execute(
+            "UPDATE sessions SET name = ?1, updated_at = datetime('now') WHERE id = ?2",
+            params![name, id],
+        )?;
+        if updated == 0 {
+            bail!("Session '{}' not found.", id);
+        }
+        Ok(())
     }
 
     pub fn delete_session(&self, id: &str) -> Result<()> {
