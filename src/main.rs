@@ -1,6 +1,7 @@
 mod acp;
 mod cli;
 mod config;
+mod global_paths;
 mod llm;
 mod log;
 mod lsp;
@@ -25,6 +26,9 @@ async fn main() -> Result<()> {
 
     let mut cfg = config::load_config()?;
     cli::merge_cli_config(&mut cfg, &args);
+
+    let paths = global_paths::GlobalPaths::new();
+    let _ = paths.ensure_dirs();
 
     let store = session_store::SessionStore::new().ok();
 

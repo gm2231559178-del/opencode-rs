@@ -30,7 +30,7 @@ Real feature gaps between the Rust reimplementation and the original [opencode](
 | Sidebar plugins (files, MCP, LSP, todos, context) | `[~]` | `packages/tui/src/feature-plugins/sidebar/` | Toggleable left panel with 5 collapsible sections; Ctrl+B / leader+b |
 | Command palette | `[~]` | `packages/tui/src/component/command-palette.tsx` | Popup dialog with categorized commands; Ctrl+P / leader+k |
 | Leader key system | `[x]` | `packages/tui/src/keymap.tsx` | Space leader key shows menu; f/s/m/a/t/h/p/c/%/n/d/e/q/? actions |
-| Dialogs (agent, model, theme, session, MCP, stash, skill, status, help, workspace, command, prompt) | `[~]` | `packages/tui/src/component/dialog-*.tsx` | 14 dialog types: agent, model, theme, session list, MCP status, stash, skill, status overview, help, alert, confirm, workspace info, command palette, text prompt |
+| Dialogs (agent, model, theme, session, MCP, stash, skill, status, help, workspace, command, prompt) | `[~]` | `packages/tui/src/component/dialog-*.tsx` | 14 dialog types; confirm executes actions (new/delete session), y/n key support |
 | Autocomplete (`@` file, `#L` lines, frecency, references) | `[~]` | `packages/tui/src/component/prompt/autocomplete.tsx` | `@` triggers fd + directory indicator + reference candidates |
 | Thinking/reasoning display | `[x]` | `packages/tui/src/context/thinking.ts` | Collapsible reasoning blocks, Ctrl+R toggle |
 | Diff viewer (side-by-side/stacked) | `[x]` | `packages/tui/src/feature-plugins/system/diff-viewer.tsx` | Scrollable overlay with +/- colors, arrow/PgUp/PgDn/Home/End |
@@ -86,7 +86,7 @@ Real feature gaps between the Rust reimplementation and the original [opencode](
 | Plugin SDK | `[ ]` | `packages/sdk/js/` | Build plugins with authenticated server comms |
 | Migration (v1→v2) | `[ ]` | `packages/cli/src/commands/handlers/migrate.ts` | Data migration tooling |
 | Version detection | `[x]` | `packages/core/src/installation/version.ts` | `--version` flag, `/version` command |
-| Global paths | `[ ]` | `packages/core/src/global.ts` | XDG-based directory resolution |
+| Global paths | `[~]` | `packages/core/src/global.ts` | XDG-based directory resolution with ensure_dirs at startup |
 | Locale utilities | `[ ]` | `packages/tui/src/util/locale.ts` | Text truncation, number formatting |
 | Presentation utilities | `[ ]` | `packages/tui/src/util/presentation.ts` | Session epilogue formatting |
 | Transcript formatting | `[ ]` | `packages/tui/src/util/transcript.ts` | Session export formatting |
