@@ -47,6 +47,7 @@ pub struct TuiApp {
     pub reasoning_visible: bool,
     pub collapsed: std::collections::HashSet<usize>,
     pub toast: Option<(String, u8)>,
+    pub leader_mode: bool,
 }
 
 #[derive(Clone)]
@@ -97,6 +98,7 @@ impl TuiApp {
             reasoning_visible: true,
             collapsed: std::collections::HashSet::new(),
             toast: None,
+            leader_mode: false,
         }
     }
 
@@ -815,12 +817,42 @@ impl TuiApp {
     }
 
     async fn handle_key(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
+        // Leader mode: handle the action key
+        if self.leader_mode {
+            self.leader_mode = false;
+            let action = match key.code {
+                KeyCode::Char('f') => Some("/diagnostics "),
+                KeyCode::Char('s') => Some("/sessions"),
+                KeyCode::Char('/') => Some("/plan"),
+                KeyCode::Char('t') => Some("/theme"),
+                KeyCode::Char('n') => Some("/new"),
+                KeyCode::Char('h') => Some("/help"),
+                KeyCode::Char('d') => Some("/diff"),
+                KeyCode::Char('q') => { self.quit = true; None }
+                KeyCode::Char('m') => Some("/model "),
+                KeyCode::Char('a') => Some("/agent "),
+                KeyCode::Esc => None,
+                _ => { self.show_toast("Unknown leader key".to_string()); None }
+            };
+            if let Some(cmd) = action {
+                self.input = cmd.to_string();
+                self.cursor = self.input.len();
+                if !cmd.ends_with(' ') {
+                    self.handle_slash(cmd).await;
+                }
+            }
+            return Ok(());
+        }
+
         match key.code {
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.quit = true;
             }
             KeyCode::Char('q') if self.input.is_empty() => {
                 self.quit = true;
+            }
+            KeyCode::Char(' ') if self.input.is_empty() && !self.streaming => {
+                self.leader_mode = true;
             }
             KeyCode::Esc if self.streaming => {
                 self.cancelled.store(true, Ordering::SeqCst);
@@ -1092,6 +1124,13 @@ impl TuiApp {
             spans.push(Span::raw(" │ "));
             spans.push(mode_tag);
         }
+        if self.leader_mode {
+            spans.push(Span::raw(" │ "));
+            spans.push(Span::styled(
+                " LEADER ",
+                Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
+            ));
+        }
         let line = Line::from(spans);
         let block = Block::default().borders(Borders::TOP);
         let inner = block.inner(area);
@@ -1248,6 +1287,8 @@ impl TuiApp {
         let t = self.theme;
         let title = if self.pending_perm.is_some() {
             " Approve? (y=allow / n=deny) ".to_string()
+        } else if self.leader_mode {
+            " Leader: (f)iles (s)essions (/)plan (t)heme (n)ew (d)iff (m)odel (a)gent (h)elp (q)uit ".to_string()
         } else if !self.autocomplete_candidates.is_empty() {
             let idx = self.autocomplete_idx.max(0) as usize;
             let total = self.autocomplete_candidates.len();
