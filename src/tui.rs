@@ -243,7 +243,7 @@ impl TuiApp {
                         self.messages.push(TuiMessage {
             age: 0,
                             role: "tool_call".to_string(),
-                            content: format!("{} ({})\n{}", name, short, preview),
+                            content: format!("{} ({})\n{}", crate::util::tool_display::human_name(&name), short, preview),
                         });
                     }
                     StreamEvent::PermissionRequest { request_id, tool_name, args } => {
