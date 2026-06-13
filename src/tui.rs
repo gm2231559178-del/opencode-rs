@@ -2804,14 +2804,17 @@ impl TuiApp {
         spans
     }
     fn get_comment_info(line: &str, lang: &str) -> (Option<&'static str>, bool) {
+        let lang = crate::util::filetype::normalize_language(lang);
         let (single, can_be_inline): (&str, bool) = match lang {
-            "rust" | "rs" | "go" | "c" | "cpp" | "c++" | "cxx" | "java" | "js" | "javascript" | "ts" | "typescript" | "swift" | "kotlin" | "scala" | "dart" | "zig" => ("//", true),
-            "python" | "py" | "r" | "ruby" | "rb" | "yaml" | "yml" | "toml" | "ini" | "cfg" | "perl" | "pl" | "elixir" | "ex" | "exs" => ("#", true),
+            "rust" | "go" | "c" | "cpp" | "java" | "javascript" | "typescript" | "swift" | "kotlin" | "scala" | "dart" | "zig" => ("//", true),
+            "python" | "r" | "ruby" | "yaml" | "toml" | "ini" | "cfg" | "perl" | "elixir" => ("#", true),
             "lua" => ("--", true),
             "sql" => ("--", true),
-            "haskell" | "hs" => ("--", true),
-            "clojure" | "clj" | "lisp" | "el" | "scheme" => (";", true),
+            "haskell" => ("--", true),
+            "clojure" | "lisp" | "scheme" => (";", true),
             "html" | "xml" | "svg" => ("<!--", false),
+            "php" => ("//", true),
+            "bash" | "shell" | "sh" => ("#", true),
             _ => ("", false),
         };
 
@@ -2831,24 +2834,37 @@ impl TuiApp {
     }
 
     fn get_keywords(lang: &str) -> &'static [&'static str] {
-    match lang {
-        "rust" | "rs" => &["as", "break", "const", "continue", "crate", "else", "enum", "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub", "ref", "return", "self", "Self", "static", "struct", "super", "trait", "true", "type", "unsafe", "use", "where", "while", "async", "await", "dyn", "try"],
+        let lang = crate::util::filetype::normalize_language(lang);
+        match lang {
+        "rust" => &["as", "break", "const", "continue", "crate", "else", "enum", "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub", "ref", "return", "self", "Self", "static", "struct", "super", "trait", "true", "type", "unsafe", "use", "where", "while", "async", "await", "dyn", "try"],
         "go" => &["break", "case", "chan", "const", "continue", "default", "defer", "else", "fallthrough", "for", "func", "go", "goto", "if", "import", "interface", "map", "package", "range", "return", "select", "struct", "switch", "type", "var"],
-        "python" | "py" => &["False", "None", "True", "and", "as", "assert", "async", "await", "break", "class", "continue", "def", "del", "elif", "else", "except", "finally", "for", "from", "global", "if", "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise", "return", "try", "while", "with", "yield"],
-        "js" | "javascript" | "ts" | "typescript" => &["async", "await", "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete", "do", "else", "enum", "export", "extends", "false", "finally", "for", "function", "if", "import", "in", "instanceof", "let", "new", "null", "of", "return", "super", "switch", "this", "throw", "true", "try", "typeof", "undefined", "var", "void", "while", "with", "yield"],
+        "python" => &["False", "None", "True", "and", "as", "assert", "async", "await", "break", "class", "continue", "def", "del", "elif", "else", "except", "finally", "for", "from", "global", "if", "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise", "return", "try", "while", "with", "yield"],
+        "javascript" | "typescript" => &["async", "await", "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete", "do", "else", "enum", "export", "extends", "false", "finally", "for", "function", "if", "import", "in", "instanceof", "let", "new", "null", "of", "return", "super", "switch", "this", "throw", "true", "try", "typeof", "undefined", "var", "void", "while", "with", "yield"],
         "java" => &["abstract", "assert", "boolean", "break", "byte", "case", "catch", "char", "class", "const", "continue", "default", "do", "double", "else", "enum", "extends", "false", "final", "finally", "float", "for", "goto", "if", "implements", "import", "instanceof", "int", "interface", "long", "native", "new", "null", "package", "private", "protected", "public", "return", "short", "static", "strictfp", "super", "switch", "synchronized", "this", "throw", "throws", "transient", "true", "try", "void", "volatile", "while"],
-        "c" | "c++" | "cpp" | "cxx" => &["auto", "bool", "break", "case", "catch", "char", "class", "const", "constexpr", "continue", "default", "delete", "do", "double", "else", "enum", "explicit", "extern", "false", "float", "for", "friend", "goto", "if", "inline", "int", "long", "namespace", "new", "noexcept", "nullptr", "operator", "override", "private", "protected", "public", "return", "short", "signed", "sizeof", "static", "struct", "switch", "template", "this", "throw", "true", "try", "typedef", "typename", "union", "unsigned", "using", "virtual", "void", "volatile", "while"],
+        "c" | "cpp" => &["auto", "bool", "break", "case", "catch", "char", "class", "const", "constexpr", "continue", "default", "delete", "do", "double", "else", "enum", "explicit", "extern", "false", "float", "for", "friend", "goto", "if", "inline", "int", "long", "namespace", "new", "noexcept", "nullptr", "operator", "override", "private", "protected", "public", "return", "short", "signed", "sizeof", "static", "struct", "switch", "template", "this", "throw", "true", "try", "typedef", "typename", "union", "unsigned", "using", "virtual", "void", "volatile", "while"],
+        "ruby" => &["BEGIN", "END", "alias", "and", "begin", "break", "case", "class", "def", "defined?", "do", "else", "elsif", "end", "ensure", "false", "for", "if", "in", "module", "next", "nil", "not", "or", "redo", "rescue", "retry", "return", "self", "super", "then", "true", "undef", "unless", "until", "when", "while", "yield"],
+        "php" => &["__CLASS__", "__DIR__", "__FILE__", "__FUNCTION__", "__LINE__", "__METHOD__", "__NAMESPACE__", "__TRAIT__", "abstract", "and", "array", "as", "break", "callable", "case", "catch", "class", "clone", "const", "continue", "declare", "default", "die", "do", "echo", "else", "elseif", "empty", "enddeclare", "endfor", "endforeach", "endif", "endswitch", "endwhile", "eval", "exit", "extends", "false", "final", "finally", "fn", "for", "foreach", "function", "global", "goto", "if", "implements", "include", "include_once", "instanceof", "insteadof", "interface", "isset", "list", "match", "namespace", "new", "null", "or", "print", "private", "protected", "public", "readonly", "require", "require_once", "return", "static", "switch", "throw", "trait", "true", "try", "unset", "use", "var", "while", "xor", "yield"],
+        "swift" => &["Protocol", "Self", "Type", "actor", "any", "associatedtype", "async", "await", "break", "case", "catch", "class", "continue", "convenience", "default", "defer", "deinit", "didSet", "do", "dynamic", "else", "enum", "extension", "fallthrough", "false", "fileprivate", "for", "func", "get", "guard", "if", "import", "in", "indirect", "infix", "init", "inout", "internal", "is", "lazy", "let", "macro", "mutating", "nil", "nonmutating", "open", "operator", "optional", "override", "package", "postfix", "precedence", "prefix", "private", "protocol", "public", "repeat", "required", "rethrows", "return", "self", "set", "some", "static", "struct", "subscript", "super", "switch", "throw", "throws", "true", "try", "typealias", "unowned", "var", "weak", "where", "while", "willSet"],
+        "kotlin" => &["actual", "annotation", "as", "as?", "break", "by", "catch", "class", "companion", "const", "constructor", "continue", "crossinline", "data", "delegate", "do", "dynamic", "else", "enum", "expect", "external", "false", "field", "file", "final", "finally", "for", "fun", "if", "import", "in", "!in", "infix", "init", "inline", "inner", "interface", "internal", "is", "!is", "lateinit", "noinline", "null", "object", "open", "operator", "out", "override", "package", "param", "private", "property", "protected", "public", "receiver", "reified", "return", "sealed", "set", "setparam", "super", "suspend", "tailrec", "this", "throw", "true", "try", "typealias", "typeof", "val", "var", "vararg", "when", "where", "while"],
+        "scala" => &["abstract", "case", "catch", "class", "def", "do", "else", "enum", "extends", "false", "final", "finally", "for", "forSome", "given", "if", "implicit", "import", "lazy", "match", "new", "null", "object", "override", "package", "private", "protected", "public", "return", "sealed", "self", "super", "then", "throw", "trait", "true", "try", "type", "using", "val", "var", "while", "with", "yield"],
+        "lua" => &["and", "break", "do", "else", "elseif", "end", "false", "for", "function", "goto", "if", "in", "local", "nil", "not", "or", "repeat", "return", "then", "true", "until", "while"],
+        "haskell" => &["class", "data", "default", "deriving", "do", "else", "family", "forall", "foreign", "hiding", "if", "import", "in", "infix", "infixl", "infixr", "instance", "let", "module", "newtype", "of", "open", "pattern", "qualified", "then", "type", "where", "_"],
+        "dart" => &["abstract", "as", "assert", "async", "await", "break", "case", "catch", "class", "const", "continue", "covariant", "default", "deferred", "do", "dynamic", "else", "enum", "export", "extends", "extension", "external", "factory", "false", "final", "finally", "for", "Function", "get", "hide", "if", "implements", "import", "in", "interface", "is", "late", "library", "mixin", "new", "null", "on", "operator", "optional", "part", "required", "rethrow", "return", "set", "show", "static", "super", "switch", "sync", "this", "throw", "true", "try", "typedef", "var", "void", "while", "with", "yield"],
+        "r" => &["FALSE", "NULL", "NA", "NaN", "TRUE", "break", "else", "for", "function", "if", "in", "Inf", "next", "repeat", "return", "while"],
         _ => &[],
+        }
     }
-}
 
     fn is_builtin(word: &str, lang: &str) -> bool {
-    match lang {
-        "python" | "py" => matches!(word, "print" | "len" | "range" | "type" | "str" | "int" | "float" | "list" | "dict" | "set" | "tuple" | "bool" | "super" | "self" | "open" | "map" | "filter" | "zip" | "enumerate" | "sorted" | "reversed" | "any" | "all" | "sum" | "min" | "max" | "abs" | "round" | "isinstance" | "hasattr" | "getattr" | "setattr" | "ValueError" | "TypeError" | "KeyError" | "Exception" | "BaseException" | "object" | "property" | "staticmethod" | "classmethod"),
-        "js" | "javascript" | "ts" | "typescript" => matches!(word, "console" | "log" | "error" | "warn" | "require" | "module" | "exports" | "process" | "Buffer" | "setTimeout" | "setInterval" | "fetch" | "Promise" | "Array" | "Object" | "String" | "Number" | "Boolean" | "Map" | "Set" | "Symbol" | "JSON" | "Math" | "Date" | "RegExp" | "Error" | "undefined" | "null" | "true" | "false" | "window" | "document" | "globalThis" | "exports" | "describe" | "it" | "test" | "expect" | "jest"),
+        let lang = crate::util::filetype::normalize_language(lang);
+        match lang {
+        "python" => matches!(word, "print" | "len" | "range" | "type" | "str" | "int" | "float" | "list" | "dict" | "set" | "tuple" | "bool" | "super" | "self" | "open" | "map" | "filter" | "zip" | "enumerate" | "sorted" | "reversed" | "any" | "all" | "sum" | "min" | "max" | "abs" | "round" | "isinstance" | "hasattr" | "getattr" | "setattr" | "ValueError" | "TypeError" | "KeyError" | "Exception" | "BaseException" | "object" | "property" | "staticmethod" | "classmethod"),
+        "javascript" | "typescript" => matches!(word, "console" | "log" | "error" | "warn" | "require" | "module" | "exports" | "process" | "Buffer" | "setTimeout" | "setInterval" | "fetch" | "Promise" | "Array" | "Object" | "String" | "Number" | "Boolean" | "Map" | "Set" | "Symbol" | "JSON" | "Math" | "Date" | "RegExp" | "Error" | "undefined" | "null" | "true" | "false" | "window" | "document" | "globalThis" | "exports" | "describe" | "it" | "test" | "expect" | "jest"),
+        "ruby" => matches!(word, "puts" | "print" | "p" | "require" | "include" | "extend" | "attr_accessor" | "attr_reader" | "attr_writer" | "private" | "protected" | "public" | "raise" | "fail" | "catch" | "throw" | "lambda" | "proc" | "eval" | "loop" | "sleep" | "gets" | "chomp" | "inspect" | "to_s" | "to_i" | "to_f" | "nil?" | "empty?" | "length" | "size" | "each" | "map" | "select" | "reject" | "reduce" | "inject" | "sort" | "uniq" | "first" | "last"),
+        "php" => matches!(word, "echo" | "print" | "die" | "exit" | "isset" | "unset" | "empty" | "require" | "require_once" | "include" | "include_once" | "defined" | "array" | "count" | "strlen" | "strpos" | "substr" | "explode" | "implode" | "json_encode" | "json_decode" | "preg_match" | "sprintf" | "var_dump" | "error_log" | "header" | "session_start" | "setcookie" | "is_null" | "is_numeric" | "PHP_EOL" | "true" | "false" | "null"),
         _ => false,
+        }
     }
-}
 
     fn render_autocomplete_popup(&self, f: &mut Frame, area: Rect, candidates: &[String], idx: isize) {
         let t = self.theme;
