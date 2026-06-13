@@ -93,6 +93,7 @@ pub enum PermissionAction {
 #[derive(Debug, Clone)]
 pub enum StreamEvent {
     Text { delta: String },
+    Reasoning { delta: String },
     ToolCall { id: String, name: String, arguments: Value },
     ToolResult { id: String, name: String, output: String },
     PermissionRequest { request_id: String, tool_name: String, args: Value },
@@ -105,6 +106,8 @@ pub enum StreamEvent {
 pub enum LLMEvent {
     #[serde(rename = "text")]
     Text { delta: String },
+    #[serde(rename = "reasoning")]
+    Reasoning { delta: String },
     #[serde(rename = "tool_call_start")]
     ToolCallStart { id: String, name: String },
     #[serde(rename = "tool_call_delta")]

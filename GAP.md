@@ -18,10 +18,10 @@ Real feature gaps between the Rust reimplementation and the original [opencode](
 
 | Gap | Status | Original location | Notes |
 |-----|--------|-------------------|-------|
-| 30+ providers | `[ ]` | `packages/core/src/plugin/provider/*.ts` | Rust only has OpenAI + Anthropic |
-| GitHub Copilot provider | `[ ]` | `packages/core/src/github-copilot/` | Copilot-compatible chat + responses |
-| Provider catalog | `[ ]` | `packages/core/src/catalog.ts` | Model registry with discovery |
-| Model request system | `[ ]` | `packages/core/src/model-request.ts` | Provider/model routing |
+| 30+ providers | `[-]` | `packages/core/src/plugin/provider/*.ts` | Rust only has OpenAI + Anthropic — intentionally out of scope for rewrite |
+| GitHub Copilot provider | `[-]` | `packages/core/src/github-copilot/` | Intentional gap |
+| Provider catalog | `[-]` | `packages/core/src/catalog.ts` | Intentional gap |
+| Model request system | `[-]` | `packages/core/src/model-request.ts` | Intentional gap |
 
 ## P1 — TUI Richness
 
@@ -32,16 +32,16 @@ Real feature gaps between the Rust reimplementation and the original [opencode](
 | Leader key system | `[ ]` | `packages/tui/src/keymap.tsx` | Space leader, modal keybindings |
 | 30+ dialogs | `[ ]` | `packages/tui/src/component/dialog-*.tsx` | Agent, model, MCP, workspace, session, tag, skill, theme, stash, provider, console, export, etc. |
 | Autocomplete (`@` file, `#L` lines, frecency) | `[ ]` | `packages/tui/src/component/prompt/autocomplete.tsx` | Fuzzy file search, line ranges, history |
-| Thinking/reasoning display | `[ ]` | `packages/tui/src/context/thinking.ts` | Collapsible reasoning blocks |
+| Thinking/reasoning display | `[x]` | `packages/tui/src/context/thinking.ts` | Collapsible reasoning blocks, Ctrl+R toggle |
 | Diff viewer (side-by-side/stacked) | `[ ]` | `packages/tui/src/feature-plugins/system/diff-viewer.tsx` | Interactive diff with file tree |
 | Audio/sound system | `[ ]` | `packages/tui/src/audio.ts` | Events: question, permission, error, done |
-| Clipboard integration | `[ ]` | `packages/tui/src/context/clipboard.tsx` | Yank last response |
+| Clipboard integration | `[x]` | `packages/tui/src/context/clipboard.tsx` | Yank last response (Ctrl+Y) |
 | Editor integration | `[ ]` | `packages/tui/src/editor.ts`, `editor-zed.ts` | Zed buffer, $EDITOR/$VISUAL |
 | Syntax highlighting | `[ ]` | `packages/tui/src/context/theme.ts` | ANSI/code block highlighting |
 | Toast notifications | `[ ]` | `packages/tui/src/ui/toast.tsx` | Inline toasts |
-| Scroll acceleration | `[ ]` | `packages/tui/src/util/scroll.ts` | PageUp/PageDown |
-| Multi-line input | `[~]` | `packages/tui/` | Enter submits, Esc clears; no Shift+Enter newline |
-| Tool output collapse | `[ ]` | `packages/tui/src/util/collapse-tool-output.ts` | Collapse verbose output |
+| Scroll acceleration | `[x]` | `packages/tui/src/util/scroll.ts` | PageUp/PageDown |
+| Multi-line input | `[x]` | `packages/tui/` | Shift+Enter newline, Ctrl+Enter submit |
+| Tool output collapse | `[x]` | `packages/tui/src/util/collapse-tool-output.ts` | Ctrl+O collapse/expand |
 | Fade-in animations | `[ ]` | `packages/tui/src/util/signal.ts` | `createFadeIn` utility |
 
 ## P2 — Infrastructure
@@ -98,6 +98,7 @@ Real feature gaps between the Rust reimplementation and the original [opencode](
 ---
 
 ## Legend
+- `[-]` out of scope (intentionally not ported)
 - `[ ]` not started
 - `[~]` in progress / partially done
 - `[x]` done

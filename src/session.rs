@@ -333,6 +333,9 @@ impl Session {
                         response_text.push_str(&delta);
                         let _ = tx.send(StreamEvent::Text { delta }).await;
                     }
+                    LLMEvent::Reasoning { delta } => {
+                        let _ = tx.send(StreamEvent::Reasoning { delta }).await;
+                    }
                     LLMEvent::ToolCallStart { id, name } => {
                         debug!(call_id = %id, tool = %name, "prompt_stream: tool call start");
                         tool_calls.push(ToolCall {

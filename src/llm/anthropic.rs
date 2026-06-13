@@ -196,6 +196,14 @@ fn parse_sse_events(text: &str) -> Vec<LLMEvent> {
                                     .to_string(),
                             });
                         }
+                        if val["delta"]["type"] == "thinking_delta" {
+                            events.push(LLMEvent::Reasoning {
+                                delta: val["delta"]["thinking"]
+                                    .as_str()
+                                    .unwrap_or_default()
+                                    .to_string(),
+                            });
+                        }
                     }
                     Some("content_block_start") => {
                         if val["content_block"]["type"] == "tool_use" {

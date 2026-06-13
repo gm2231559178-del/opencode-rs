@@ -277,6 +277,14 @@ fn parse_sse_events_from_buf(
                 }
             }
 
+            if let Some(reasoning) = val["choices"][0]["delta"]["reasoning_content"].as_str() {
+                if !reasoning.is_empty() {
+                    events.push(LLMEvent::Reasoning {
+                        delta: reasoning.to_string(),
+                    });
+                }
+            }
+
             if let Some(tcs) = val["choices"][0]["delta"]["tool_calls"].as_array() {
                 for tc in tcs {
                     let index = tc["index"].as_u64().unwrap_or(0);

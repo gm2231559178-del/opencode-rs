@@ -43,6 +43,9 @@ pub struct TuiApp {
     pub theme: &'static Theme,
     pub theme_name: String,
     pub notify: bool,
+    pub reasoning: String,
+    pub reasoning_visible: bool,
+    pub collapsed: std::collections::HashSet<usize>,
 }
 
 #[derive(Clone)]
@@ -79,6 +82,9 @@ impl TuiApp {
             theme: &crate::theme::DEFAULT,
             theme_name: "default".to_string(),
             notify: true,
+            reasoning: String::new(),
+            reasoning_visible: true,
+            collapsed: std::collections::HashSet::new(),
         }
     }
 
@@ -128,6 +134,9 @@ impl TuiApp {
         if let Some(rx) = &mut self.stream_rx {
             while let Ok(event) = rx.try_recv() {
                 match event {
+                    StreamEvent::Reasoning { delta } => {
+                        self.reasoning.push_str(&delta);
+                    }
                     StreamEvent::Text { delta } => {
                         let needs_new = self.messages.last().map(|m| m.role != "assistant").unwrap_or(true);
                         if needs_new {
@@ -181,6 +190,15 @@ impl TuiApp {
                             let _ = print!("\x07");
                             let _ = io::Write::flush(&mut io::stdout());
                         }
+
+                        if !self.reasoning.is_empty() {
+                            let reasoning = std::mem::take(&mut self.reasoning);
+                            self.messages.push(TuiMessage {
+                                role: "reasoning".to_string(),
+                                content: reasoning,
+                            });
+                        }
+
                         if response.is_empty() {
                             if let Some(last) = self.messages.last() {
                                 if last.role == "assistant" {
@@ -713,6 +731,12 @@ impl TuiApp {
             KeyCode::Char('y') if key.modifiers.contains(KeyModifiers::CONTROL) && !self.streaming => {
                 self.copy_last_response();
             }
+            KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) && !self.streaming => {
+                self.reasoning_visible = !self.reasoning_visible;
+            }
+            KeyCode::Char('o') if !self.streaming && self.input.is_empty() => {
+                self.toggle_collapse_last_tool();
+            }
             KeyCode::Tab if !self.autocomplete_candidates.is_empty() => {
                 if key.modifiers.contains(KeyModifiers::SHIFT) {
                     self.autocomplete_idx = if self.autocomplete_idx <= 0 {
@@ -860,6 +884,15 @@ impl TuiApp {
         Ok(())
     }
 
+    fn toggle_collapse_last_tool(&mut self) {
+        let last_tool = self.messages.iter().rposition(|m| m.role == "tool_result" || m.role == "tool_call");
+        if let Some(idx) = last_tool {
+            if !self.collapsed.remove(&idx) {
+                self.collapsed.insert(idx);
+            }
+        }
+    }
+
     fn render(&self, f: &mut Frame) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -907,12 +940,14 @@ impl TuiApp {
         let items: Vec<ListItem> = self
             .messages
             .iter()
+            .enumerate()
             .rev()
             .skip(self.scroll)
-            .map(|m| {
+            .map(|(idx, m)| {
                 let style = match m.role.as_str() {
                     "user" => Style::default().fg(t.user_msg).add_modifier(Modifier::BOLD),
                     "assistant" => Style::default().fg(t.assistant_msg),
+                    "reasoning" => Style::default().fg(t.dim).add_modifier(Modifier::DIM),
                     "tool_call" => Style::default().fg(t.tool_call).add_modifier(Modifier::DIM),
                     "tool_result" => Style::default().fg(t.tool_result).add_modifier(Modifier::DIM),
                     _ => Style::default().fg(t.text),
@@ -920,10 +955,23 @@ impl TuiApp {
                 let label = match m.role.as_str() {
                     "tool_call" => "tool".to_string(),
                     "tool_result" => "result".to_string(),
+                    "reasoning" => "think".to_string(),
                     r => r.to_string(),
                 };
-                let header = Span::styled(format!("{}> ", label), style);
-                let content = textwrap::fill(&m.content, area.width as usize - 4);
+
+                let collapsed = self.collapsed.contains(&idx);
+                let display_content = if collapsed && m.content.len() > 100 {
+                    let preview: String = m.content.chars().take(100).collect();
+                    format!("{}... [+{} chars collapsed]", preview, m.content.len() - 100)
+                } else if !collapsed && !self.reasoning_visible && m.role == "reasoning" {
+                    String::new()
+                } else {
+                    m.content.clone()
+                };
+
+                let header_prefix = if collapsed { "+ " } else { "  " };
+                let header = Span::styled(format!("{}{}> ", header_prefix, label), style);
+                let content = textwrap::fill(&display_content, area.width as usize - 4);
                 let lines: Vec<Line> = std::iter::once(Line::from(vec![header]))
                     .chain(content.lines().map(|l| Line::from(Span::raw(format!("  {}", l)))))
                     .chain(std::iter::once(Line::from("")))
@@ -952,13 +1000,19 @@ impl TuiApp {
             };
             format!(" @ files ({}/{}) {} ", idx + 1, total, preview)
         } else {
+            let hint = if self.input.contains('\n') {
+                " Ctrl+Enter to send | Esc to cancel | Ctrl+R: toggle thinking | Ctrl+O: collapse"
+            } else {
+                " Shift+Enter for newline | Ctrl+R: toggle thinking | Ctrl+O: collapse"
+            };
             format!(
-                " Input {}",
+                " Input{}{} ",
                 if self.input_history.is_empty() {
                     ""
                 } else {
-                    "(↑↓ history)"
-                }
+                    "(↑↓ history) "
+                },
+                hint
             )
         };
         let input = Paragraph::new(self.input.as_str())
