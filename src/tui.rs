@@ -44,6 +44,8 @@ pub enum ActiveDialog {
     Help,
     Alert { title: String, message: String },
     Confirm { title: String, message: String, action: String },
+    CommandPalette { options: Vec<SelectOption>, selected: usize, filter: String },
+    Workspace,
 }
 
 enum EnterAction {
@@ -53,6 +55,7 @@ enum EnterAction {
     SessionLoad(String),
     StashInsert(String),
     SkillInsert(String),
+    CommandExecute(String),
 }
 
 pub struct TuiApp {
@@ -90,6 +93,13 @@ pub struct TuiApp {
     pub dialog: Option<ActiveDialog>,
     pub dialog_stack: Vec<ActiveDialog>,
     pub references: Vec<crate::reference::ReferenceInfo>,
+    pub sidebar_visible: bool,
+    pub sidebar_panels_open: Vec<bool>,
+    pub context_tokens: usize,
+    pub context_percent: u8,
+    pub session_cost: f64,
+    pub mcp_status: Vec<(String, String)>,  // (name, status)
+    pub modified_files: Vec<(String, usize, usize)>, // (path, additions, deletions)
 }
 
 #[derive(Clone)]
@@ -154,6 +164,13 @@ impl TuiApp {
             dialog: None,
             dialog_stack: Vec::new(),
             references,
+            sidebar_visible: false,
+            sidebar_panels_open: vec![true; 5],
+            context_tokens: 0,
+            context_percent: 0,
+            session_cost: 0.0,
+            mcp_status: Vec::new(),
+            modified_files: Vec::new(),
         }
     }
 
@@ -266,8 +283,10 @@ impl TuiApp {
                 match event {
                     StreamEvent::Reasoning { delta } => {
                         self.reasoning.push_str(&delta);
+                        self.context_tokens += delta.len() / 4;
                     }
                     StreamEvent::Text { delta } => {
+                        self.context_tokens += delta.len() / 4;
                         let needs_new = self.messages.last().map(|m| m.role != "assistant").unwrap_or(true);
                         if needs_new {
                             self.messages.push(TuiMessage {
@@ -389,6 +408,57 @@ impl TuiApp {
             self.stream_rx = None;
             self.save_session();
         }
+    }
+
+    // ── Sidebar helpers ─────────────────────────────────────
+
+    fn refresh_sidebar_data(&mut self) {
+        // Refresh modified files from git
+        self.modified_files = self.get_modified_files();
+
+        // Refresh MCP status from session config
+        if let Ok(session) = self.session.try_lock() {
+            let names: Vec<String> = session.config.mcp.keys().cloned().collect();
+            if !names.is_empty() && self.mcp_status.is_empty() {
+                // Start with "connecting" status for configured servers
+                for n in names {
+                    if !self.mcp_status.iter().any(|(name, _)| name == &n) {
+                        self.mcp_status.push((n, "connecting".to_string()));
+                    }
+                }
+            }
+        }
+    }
+
+    fn get_modified_files(&self) -> Vec<(String, usize, usize)> {
+        if let Ok(session) = self.session.try_lock() {
+            let cwd = &session.cwd;
+            let output = std::process::Command::new("git")
+                .args(["diff", "--stat"])
+                .current_dir(cwd)
+                .output();
+            if let Ok(out) = output {
+                if out.status.success() {
+                    let stdout = String::from_utf8_lossy(&out.stdout);
+                    let mut files = Vec::new();
+                    for line in stdout.lines() {
+                        let line = line.trim();
+                        // Parse " path/to/file | 10 ++++++-------" or similar
+                        if let Some(pipe_idx) = line.rfind('|') {
+                            let path = line[..pipe_idx].trim().to_string();
+                            let rest = line[pipe_idx + 1..].trim();
+                            let add = rest.chars().filter(|&c| c == '+').count();
+                            let del = rest.chars().filter(|&c| c == '-').count();
+                            if !path.is_empty() {
+                                files.push((path, add, del));
+                            }
+                        }
+                    }
+                    return files;
+                }
+            }
+        }
+        Vec::new()
     }
 
     // ── Dialog helpers ──────────────────────────────────────
@@ -609,6 +679,35 @@ impl TuiApp {
         options
     }
 
+    fn build_command_palette_options(&self) -> Vec<SelectOption> {
+        let mut options = Vec::new();
+        // Navigation & session
+        options.push(SelectOption { title: "New session".into(), description: Some("Clear current session and start fresh".into()), category: Some("Session".into()), value: "new".into() });
+        options.push(SelectOption { title: "Toggle plan mode".into(), description: Some("Read-only planning mode".into()), category: Some("Session".into()), value: "plan".into() });
+        options.push(SelectOption { title: "Compact conversation".into(), description: Some("Summarize and trim history".into()), category: Some("Session".into()), value: "compact".into() });
+        options.push(SelectOption { title: "Session list".into(), description: Some("Browse and load saved sessions".into()), category: Some("Session".into()), value: "sessions".into() });
+        options.push(SelectOption { title: "Undo last file change".into(), description: None, category: Some("Session".into()), value: "undo".into() });
+        // Display
+        options.push(SelectOption { title: "Toggle sidebar".into(), description: Some("Show or hide the sidebar panel".into()), category: Some("Display".into()), value: "sidebar".into() });
+        options.push(SelectOption { title: "Toggle reasoning".into(), description: Some("Show or hide reasoning blocks".into()), category: Some("Display".into()), value: "reasoning".into() });
+        options.push(SelectOption { title: "Toggle collapse".into(), description: Some("Collapse or expand tool output".into()), category: Some("Display".into()), value: "collapse".into() });
+        options.push(SelectOption { title: "Switch theme".into(), description: Some("Change color theme".into()), category: Some("Display".into()), value: "theme".into() });
+        options.push(SelectOption { title: "Diff viewer".into(), description: Some("Show file diff overlay".into()), category: Some("Display".into()), value: "diff".into() });
+        // Model & agent
+        options.push(SelectOption { title: "Switch model".into(), description: Some("Change the LLM model".into()), category: Some("Model".into()), value: "model".into() });
+        options.push(SelectOption { title: "Switch agent".into(), description: Some("Change the active agent".into()), category: Some("Model".into()), value: "agent".into() });
+        options.push(SelectOption { title: "Show help".into(), description: Some("Display key bindings reference".into()), category: Some("Info".into()), value: "help".into() });
+        options.push(SelectOption { title: "Session status".into(), description: Some("Show current session info".into()), category: Some("Info".into()), value: "status".into() });
+        options.push(SelectOption { title: "MCP status".into(), description: Some("Show MCP tool connections".into()), category: Some("Info".into()), value: "mcp".into() });
+        options.push(SelectOption { title: "Show version".into(), description: None, category: Some("Info".into()), value: "version".into() });
+        options.push(SelectOption { title: "Show agents file".into(), description: Some("Display AGENTS.md workspace instructions".into()), category: Some("Info".into()), value: "agents".into() });
+        // Actions
+        options.push(SelectOption { title: "Edit last file".into(), description: Some("Open last edited file in $EDITOR".into()), category: Some("Actions".into()), value: "edit".into() });
+        options.push(SelectOption { title: "Copy last response".into(), description: Some("Copy last assistant response to clipboard".into()), category: Some("Actions".into()), value: "copy".into() });
+        options.push(SelectOption { title: "Quit".into(), description: Some("Exit OpenCode".into()), category: Some("Actions".into()), value: "quit".into() });
+        options
+    }
+
     fn filter_options(options: &[SelectOption], filter: &str) -> Vec<SelectOption> {
         if filter.is_empty() {
             return options.to_vec();
@@ -631,7 +730,7 @@ impl TuiApp {
                 match self.dialog.as_ref().unwrap() {
                     Help | Alert { .. } | Agent { .. } | Model { .. } | Theme { .. }
                     | SessionList { .. } | MCPStatus { .. } | Stash { .. } | Skill { .. }
-                    | Status { .. } | Confirm { .. } => {
+                    | Status { .. } | Confirm { .. } | CommandPalette { .. } | Workspace => {
                         self.pop_dialog();
                     }
                 }
@@ -639,7 +738,7 @@ impl TuiApp {
             }
             KeyCode::Enter => {
                 let action = match self.dialog.as_ref().unwrap() {
-                    Help | Alert { .. } => {
+                    Help | Alert { .. } | Workspace => {
                         self.pop_dialog();
                         None
                     }
@@ -696,6 +795,14 @@ impl TuiApp {
                         }
                     }
                     MCPStatus { .. } | Status { .. } => None,
+                    CommandPalette { options, selected, filter } => {
+                        let filtered = Self::filter_options(options, filter);
+                        if *selected < filtered.len() && !filtered[*selected].value.is_empty() {
+                            Some(EnterAction::CommandExecute(filtered[*selected].value.clone()))
+                        } else {
+                            None
+                        }
+                    }
                 };
                 if let Some(action) = action {
                     self.execute_dialog_action(action);
@@ -740,6 +847,116 @@ impl TuiApp {
                 self.input = format!("/skill {}", name);
                 self.cursor = self.input.len();
             }
+            EnterAction::CommandExecute(cmd) => {
+                self.exec_command_palette_action(&cmd);
+            }
+        }
+    }
+
+    fn exec_command_palette_action(&mut self, cmd: &str) {
+        match cmd {
+            "new" => {
+                self.show_confirm("New Session".to_string(), "Clear current session?".to_string(), "clear".to_string());
+            }
+            "plan" => {
+                self.plan_mode = !self.plan_mode;
+                self.show_toast(format!("Plan mode: {}", if self.plan_mode { "ON" } else { "OFF" }));
+            }
+            "compact" => {
+                self.input = "/compact".to_string();
+                self.cursor = self.input.len();
+            }
+            "sessions" => {
+                self.push_dialog(ActiveDialog::SessionList {
+                    options: self.build_session_options(),
+                    selected: 0,
+                    filter: String::new(),
+                });
+            }
+            "undo" => {
+                self.input = "/undo".to_string();
+                self.cursor = self.input.len();
+            }
+            "sidebar" => {
+                self.sidebar_visible = !self.sidebar_visible;
+                self.show_toast(if self.sidebar_visible { "Sidebar shown".to_string() } else { "Sidebar hidden".to_string() });
+            }
+            "reasoning" => {
+                self.reasoning_visible = !self.reasoning_visible;
+                self.show_toast(if self.reasoning_visible { "Reasoning visible".to_string() } else { "Reasoning hidden".to_string() });
+            }
+            "collapse" => {
+                self.toggle_collapse_last_tool();
+            }
+            "theme" => {
+                self.push_dialog(ActiveDialog::Theme {
+                    options: self.build_theme_options(),
+                    selected: 0,
+                    filter: String::new(),
+                });
+            }
+            "diff" => {
+                self.input = "/diff".to_string();
+                self.cursor = self.input.len();
+            }
+            "model" => {
+                self.push_dialog(ActiveDialog::Model {
+                    options: self.build_model_options(),
+                    selected: 0,
+                    filter: String::new(),
+                });
+            }
+            "agent" => {
+                self.push_dialog(ActiveDialog::Agent {
+                    options: self.build_agent_options(),
+                    selected: 0,
+                    filter: String::new(),
+                });
+            }
+            "help" => {
+                self.show_help_dialog();
+            }
+            "status" => {
+                self.push_dialog(ActiveDialog::Status {
+                    options: self.build_status_options(),
+                    selected: 0,
+                    filter: String::new(),
+                });
+            }
+            "mcp" => {
+                self.push_dialog(ActiveDialog::MCPStatus {
+                    options: self.build_mcp_options(),
+                    selected: 0,
+                    filter: String::new(),
+                });
+            }
+            "version" => {
+                self.input = "/version".to_string();
+                self.cursor = self.input.len();
+            }
+            "agents" => {
+                self.input = "/agents".to_string();
+                self.cursor = self.input.len();
+            }
+            "edit" => {
+                self.open_last_edited_file();
+            }
+            "copy" => {
+                self.copy_last_response();
+                self.show_toast("Copied last response to clipboard".to_string());
+            }
+            "quit" => {
+                self.quit = true;
+            }
+            _ => {
+                // Try as a slash command
+                if !cmd.starts_with('/') {
+                    self.input = format!("/{}", cmd);
+                } else {
+                    self.input = cmd.to_string();
+                }
+                self.cursor = self.input.len();
+            }
         }
     }
 
@@ -757,7 +974,8 @@ impl TuiApp {
             | MCPStatus { options, selected, filter }
             | Stash { options, selected, filter }
             | Skill { options, selected, filter }
-            | Status { options, selected, filter } => {
+            | Status { options, selected, filter }
+            | CommandPalette { options, selected, filter } => {
                 let filtered = Self::filter_options(options, filter);
                 let len = filtered.len();
                 if len == 0 { return; }
@@ -1450,6 +1668,17 @@ impl TuiApp {
         if self.leader_mode {
             self.leader_mode = false;
             match key.code {
+                KeyCode::Char('b') => {
+                    self.sidebar_visible = !self.sidebar_visible;
+                    self.show_toast(if self.sidebar_visible { "Sidebar shown".to_string() } else { "Sidebar hidden".to_string() });
+                }
+                KeyCode::Char('k') => {
+                    self.push_dialog(ActiveDialog::CommandPalette {
+                        options: self.build_command_palette_options(),
+                        selected: 0,
+                        filter: String::new(),
+                    });
+                }
                 KeyCode::Char('f') => {
                     self.input = "/diagnostics ".to_string();
                     self.cursor = self.input.len();
@@ -1516,6 +1745,9 @@ impl TuiApp {
                     self.open_last_edited_file();
                 }
                 KeyCode::Char('q') => { self.quit = true; }
+                KeyCode::Char('w') => {
+                    self.push_dialog(ActiveDialog::Workspace);
+                }
                 KeyCode::Char('?') => {
                     self.push_dialog(ActiveDialog::Status {
                         options: self.build_status_options(),
@@ -1535,6 +1767,17 @@ impl TuiApp {
             }
             KeyCode::Char('q') if self.input.is_empty() => {
                 self.quit = true;
+            }
+            KeyCode::Char('b') if key.modifiers.contains(KeyModifiers::CONTROL) && self.input.is_empty() => {
+                self.sidebar_visible = !self.sidebar_visible;
+                self.show_toast(if self.sidebar_visible { "Sidebar shown".to_string() } else { "Sidebar hidden".to_string() });
+            }
+            KeyCode::Char('p') if key.modifiers.contains(KeyModifiers::CONTROL) && self.input.is_empty() => {
+                self.push_dialog(ActiveDialog::CommandPalette {
+                    options: self.build_command_palette_options(),
+                    selected: 0,
+                    filter: String::new(),
+                });
             }
             KeyCode::Char(' ') if self.input.is_empty() && !self.streaming => {
                 self.leader_mode = true;
@@ -1736,6 +1979,25 @@ impl TuiApp {
 
     fn render(&mut self, f: &mut Frame) {
         let has_toast = self.toast.is_some();
+
+        // When sidebar is visible, split horizontally first
+        let main_area = if self.sidebar_visible {
+            let horiz = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Length(36), Constraint::Min(1)])
+                .split(f.area());
+            self.render_sidebar(f, horiz[0]);
+            horiz[1]
+        } else {
+            f.area()
+        };
+
+        // Refresh sidebar data periodically
+        if self.sidebar_visible {
+            self.refresh_sidebar_data();
+        }
+
+        // Now split the main area vertically
         if has_toast {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
@@ -1745,7 +2007,7 @@ impl TuiApp {
                     Constraint::Length(1),
                     Constraint::Length(3),
                 ])
-                .split(f.area());
+                .split(main_area);
             self.render_messages(f, chunks[0]);
             if let Some((ref msg, _)) = self.toast {
                 self.render_toast(f, chunks[1], msg);
@@ -1756,7 +2018,7 @@ impl TuiApp {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([Constraint::Min(1), Constraint::Length(1), Constraint::Length(3)])
-                .split(f.area());
+                .split(main_area);
             self.render_messages(f, chunks[0]);
             self.render_status(f, chunks[1]);
             self.render_input(f, chunks[2]);
@@ -1779,6 +2041,178 @@ impl TuiApp {
         if self.dialog.is_some() {
             self.render_dialog(f);
         }
+    }
+
+    fn render_sidebar(&self, f: &mut Frame, area: Rect) {
+        let t = self.theme;
+        let inner_area = Rect {
+            x: area.x,
+            y: area.y,
+            width: area.width.min(36),
+            height: area.height,
+        };
+
+        // Background panel
+        let panel = Block::default()
+            .borders(Borders::RIGHT)
+            .border_style(Style::default().fg(t.border))
+            .style(Style::default().bg(t.bg));
+        f.render_widget(panel, inner_area);
+
+        let content_area = Rect {
+            x: inner_area.x + 1,
+            y: inner_area.y,
+            width: inner_area.width.saturating_sub(2),
+            height: inner_area.height,
+        };
+
+        let section_style = Style::default().fg(t.text).add_modifier(Modifier::BOLD);
+        let muted = Style::default().fg(t.dim);
+        let green = Style::default().fg(t.success);
+        let red = Style::default().fg(t.error);
+        let yellow = Style::default().fg(t.warning);
+
+        let mut lines: Vec<Line> = Vec::new();
+        let w = content_area.width as usize;
+
+        // ── Section 0: Context ──────────────────────────────
+        {
+            let arrow = if self.sidebar_panels_open[0] { "▼" } else { "▶" };
+            lines.push(Line::from(vec![
+                Span::styled(format!("{} Context", arrow), section_style),
+            ]));
+            if self.sidebar_panels_open[0] {
+                let tokens_str = if self.context_tokens > 1000 {
+                    format!("{}k tokens", self.context_tokens / 1000)
+                } else {
+                    format!("{} tokens", self.context_tokens)
+                };
+                lines.push(Line::from(vec![
+                    Span::styled(format!("  {}", tokens_str), muted),
+                ]));
+                lines.push(Line::from(vec![
+                    Span::styled(format!("  {}% used", self.context_percent), muted),
+                ]));
+                lines.push(Line::from(vec![
+                    Span::styled(format!("  ${:.5} spent", self.session_cost), muted),
+                ]));
+            }
+        }
+
+        // ── Section 1: MCP ──────────────────────────────────
+        lines.push(Line::from(""));
+        if self.mcp_status.is_empty() {
+            lines.push(Line::from(vec![
+                Span::styled("▶ MCP", section_style),
+            ]));
+            lines.push(Line::from(vec![
+                Span::styled("  No MCP servers configured", muted),
+            ]));
+        } else {
+            let arrow = if self.sidebar_panels_open[1] { "▼" } else { "▶" };
+            let active = self.mcp_status.iter().filter(|(_, s)| s == "connected").count();
+            let errs = self.mcp_status.iter().filter(|(_, s)| s == "error").count();
+            let summary = if !self.sidebar_panels_open[1] {
+                format!(" ({} active{})", active, if errs > 0 { format!(", {} err", errs) } else { String::new() })
+            } else {
+                String::new()
+            };
+            lines.push(Line::from(vec![
+                Span::styled(format!("{} MCP{}", arrow, summary), section_style),
+            ]));
+            if self.sidebar_panels_open[1] {
+                for (name, status) in &self.mcp_status {
+                    let dot = match status.as_str() {
+                        "connected" => green,
+                        "error" => red,
+                        "needs_auth" => yellow,
+                        "disabled" => muted,
+                        _ => muted,
+                    };
+                    let label = match status.as_str() {
+                        "connected" => "Connected",
+                        "error" => "Error",
+                        "needs_auth" => "Needs auth",
+                        "disabled" => "Disabled",
+                        _ => status,
+                    };
+                    let display_name: String = name.chars().take(w.saturating_sub(6)).collect();
+                    lines.push(Line::from(vec![
+                        Span::styled("  •", dot),
+                        Span::raw(" "),
+                        Span::styled(format!("{} {}", display_name, label), muted),
+                    ]));
+                }
+            }
+        }
+
+        // ── Section 2: LSP ──────────────────────────────────
+        lines.push(Line::from(""));
+        let lsp_arrow = if self.sidebar_panels_open[2] { "▼" } else { "▶" };
+        lines.push(Line::from(vec![
+            Span::styled(format!("{} LSP", lsp_arrow), section_style),
+        ]));
+        if self.sidebar_panels_open[2] {
+            lines.push(Line::from(vec![
+                Span::styled("  LSPs will activate as files are read", muted),
+            ]));
+        }
+
+        // ── Section 3: Todo ─────────────────────────────────
+        lines.push(Line::from(""));
+        let todo_arrow = if self.sidebar_panels_open[3] { "▼" } else { "▶" };
+        lines.push(Line::from(vec![
+            Span::styled(format!("{} Todo", todo_arrow), section_style),
+        ]));
+        if self.sidebar_panels_open[3] {
+            lines.push(Line::from(vec![
+                Span::styled("  No active todos", muted),
+            ]));
+        }
+
+        // ── Section 4: Modified Files ───────────────────────
+        lines.push(Line::from(""));
+        if self.modified_files.is_empty() {
+            lines.push(Line::from(vec![
+                Span::styled("▶ Modified Files", section_style),
+            ]));
+            lines.push(Line::from(vec![
+                Span::styled("  No modified files", muted),
+            ]));
+        } else {
+            let arrow = if self.sidebar_panels_open[4] { "▼" } else { "▶" };
+            lines.push(Line::from(vec![
+                Span::styled(format!("{} Modified Files", arrow), section_style),
+            ]));
+            if self.sidebar_panels_open[4] {
+                for (path, adds, dels) in &self.modified_files {
+                    // Truncate path to fit
+                    let max_path = w.saturating_sub(8);
+                    let display_path: String = if path.len() > max_path {
+                        format!("..{}", &path[path.len().saturating_sub(max_path.saturating_sub(2))..])
+                    } else {
+                        path.clone()
+                    };
+                    let mut spans: Vec<Span> = Vec::new();
+                    spans.push(Span::styled(format!("  {}", display_path), muted));
+                    if *adds > 0 {
+                        spans.push(Span::raw(" "));
+                        spans.push(Span::styled(format!("+{}", adds), green));
+                    }
+                    if *dels > 0 {
+                        spans.push(Span::raw(" "));
+                        spans.push(Span::styled(format!("-{}", dels), red));
+                    }
+                    lines.push(Line::from(spans));
+                }
+            }
+        }
+
+        // ── Footer spacer ───────────────────────────────────
+        lines.push(Line::from(""));
+
+        let paragraph = Paragraph::new(lines).style(Style::default().bg(t.bg));
+        f.render_widget(paragraph, content_area);
     }
 
     fn render_diff_viewer(&mut self, f: &mut Frame) {
@@ -2025,7 +2459,7 @@ impl TuiApp {
         let title = if self.pending_perm.is_some() {
             " Approve? (y=allow / n=deny) ".to_string()
         } else if self.leader_mode {
-            " Leader: (f)iles (s)essions (m)odel (a)gent (t)heme (h)elp (p)rompt (c)MCP (/)plan (n)ew (d)iff (e)dit (q)uit (?)status ".to_string()
+            " Leader: (b)ar (k)ommand (w)orkspace (f)iles (s)essions (m)odel (a)gent (t)heme (h)elp (p)rompt (c)MCP (/)plan (n)ew (d)iff (e)dit (q)uit (?)status ".to_string()
         } else if !self.autocomplete_candidates.is_empty() {
             let idx = self.autocomplete_idx.max(0) as usize;
             let total = self.autocomplete_candidates.len();
@@ -2083,6 +2517,7 @@ impl TuiApp {
         match dialog {
             Help => self.render_help_dialog(f, t),
             Alert { title, message } => self.render_alert_dialog(f, t, title, message),
+            Workspace => self.render_workspace_dialog(f, t),
             Confirm { title, message, action } => self.render_confirm_dialog(f, t, title, message, action),
             Agent { options, selected, filter } => {
                 let filtered = Self::filter_options(options, filter);
@@ -2124,6 +2559,11 @@ impl TuiApp {
                 let filtered: Vec<&SelectOption> = filtered.iter().collect();
                 Self::render_select_dialog(f, t, &filtered, *selected, filter, "Session Status", area);
             }
+            CommandPalette { options, selected, filter } => {
+                let filtered = Self::filter_options(options, filter);
+                let filtered: Vec<&SelectOption> = filtered.iter().collect();
+                Self::render_select_dialog(f, t, &filtered, *selected, filter, "Command Palette", area);
+            }
         }
     }
 
@@ -2139,11 +2579,16 @@ impl TuiApp {
             "  Ctrl+Y         Copy last response",
             "  Ctrl+E         Open last edited file in $EDITOR",
             "  Ctrl+R         Toggle reasoning visibility",
+            "  Ctrl+B         Toggle sidebar",
+            "  Ctrl+P         Command palette",
             "  Ctrl+O         Toggle tool output collapse",
             "  Tab/Shift+Tab    Navigate autocomplete",
             "  Enter          Submit / select autocomplete",
             "",
             "Leader keys:",
+            "  b  Toggle sidebar",
+            "  k  Command palette",
+            "  w  Workspace info",
             "  f  Insert /diagnostics",
             "  s  Session list (dialog)",
             "  /  Plan mode",
@@ -2203,6 +2648,47 @@ impl TuiApp {
                 .title(format!(" {} ", title))
                 .border_style(Style::default().fg(t.warning)));
         let inner = Self::centered_rect(area, 50, 6);
+        f.render_widget(para, inner);
+    }
+
+    fn render_workspace_dialog(&self, f: &mut Frame, t: &Theme) {
+        let area = Self::dialog_area(f.area());
+        let mut lines = Vec::new();
+        if let Ok(session) = self.session.try_lock() {
+            lines.push(Line::from(Span::styled(format!("Directory: {}", session.cwd), Style::default().fg(t.text))));
+            lines.push(Line::from(Span::styled(format!("Model: {}", session.model), Style::default().fg(t.text))));
+            lines.push(Line::from(Span::styled(
+                format!("Tools: {} available", session.tools.len()),
+                Style::default().fg(t.text),
+            )));
+            lines.push(Line::from(Span::styled(
+                format!("Messages: {} in session", session.messages.len()),
+                Style::default().fg(t.text),
+            )));
+            lines.push(Line::from(Span::styled(
+                format!("Stats: {} prompts, {} total tokens", session.stats.prompt_count, session.stats.total_tokens),
+                Style::default().fg(t.text_dim),
+            )));
+            lines.push(Line::from(""));
+            lines.push(Line::from(Span::styled(
+                format!("Config providers: {}", session.config.provider.len()),
+                Style::default().fg(t.text_dim),
+            )));
+            lines.push(Line::from(Span::styled(
+                format!("Config MCP servers: {}", session.config.mcp.len()),
+                Style::default().fg(t.text_dim),
+            )));
+        }
+        lines.push(Line::from(""));
+        lines.push(Line::from(Span::styled(
+            "  Press any key to close  ",
+            Style::default().fg(t.warning).add_modifier(Modifier::BOLD),
+        )));
+        let para = Paragraph::new(lines)
+            .block(Block::default().borders(Borders::ALL)
+                .title(" Workspace Info ")
+                .border_style(Style::default().fg(t.primary)));
+        let inner = Self::centered_rect(area, 60, 12);
         f.render_widget(para, inner);
     }
 
