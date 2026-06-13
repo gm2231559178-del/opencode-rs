@@ -46,6 +46,7 @@ pub struct TuiApp {
     pub reasoning: String,
     pub reasoning_visible: bool,
     pub collapsed: std::collections::HashSet<usize>,
+    pub toast: Option<(String, u8)>,
 }
 
 #[derive(Clone)]
@@ -85,6 +86,7 @@ impl TuiApp {
             reasoning: String::new(),
             reasoning_visible: true,
             collapsed: std::collections::HashSet::new(),
+            toast: None,
         }
     }
 
@@ -730,12 +732,26 @@ impl TuiApp {
             }
             KeyCode::Char('y') if key.modifiers.contains(KeyModifiers::CONTROL) && !self.streaming => {
                 self.copy_last_response();
+                self.show_toast("Copied last response to clipboard".to_string());
             }
             KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) && !self.streaming => {
                 self.reasoning_visible = !self.reasoning_visible;
+                self.show_toast(if self.reasoning_visible {
+                    "Reasoning visible".to_string()
+                } else {
+                    "Reasoning hidden".to_string()
+                });
             }
             KeyCode::Char('o') if !self.streaming && self.input.is_empty() => {
                 self.toggle_collapse_last_tool();
+                let has_collapsed = self.collapsed.iter().any(|&idx| {
+                    self.messages.get(idx).map(|m| m.role == "tool_result" || m.role == "tool_call").unwrap_or(false)
+                });
+                self.show_toast(if has_collapsed {
+                    "Tool output collapsed".to_string()
+                } else {
+                    "Tool output expanded".to_string()
+                });
             }
             KeyCode::Tab if !self.autocomplete_candidates.is_empty() => {
                 if key.modifiers.contains(KeyModifiers::SHIFT) {
@@ -893,15 +909,62 @@ impl TuiApp {
         }
     }
 
-    fn render(&self, f: &mut Frame) {
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(1), Constraint::Length(1), Constraint::Length(3)])
-            .split(f.area());
+    fn show_toast(&mut self, msg: String) {
+        self.toast = Some((msg, 6));
+    }
 
-        self.render_messages(f, chunks[0]);
-        self.render_status(f, chunks[1]);
-        self.render_input(f, chunks[2]);
+    fn render(&mut self, f: &mut Frame) {
+        let has_toast = self.toast.is_some();
+        if has_toast {
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Min(1),
+                    Constraint::Length(1),
+                    Constraint::Length(1),
+                    Constraint::Length(3),
+                ])
+                .split(f.area());
+            self.render_messages(f, chunks[0]);
+            if let Some((ref msg, _)) = self.toast {
+                self.render_toast(f, chunks[1], msg);
+            }
+            self.render_status(f, chunks[2]);
+            self.render_input(f, chunks[3]);
+        } else {
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Min(1), Constraint::Length(1), Constraint::Length(3)])
+                .split(f.area());
+            self.render_messages(f, chunks[0]);
+            self.render_status(f, chunks[1]);
+            self.render_input(f, chunks[2]);
+        }
+
+        // Decrement toast counter for next frame
+        if let Some((_, ref mut count)) = self.toast {
+            *count = count.saturating_sub(1);
+            if *count == 0 {
+                self.toast = None;
+            }
+        }
+    }
+
+    fn render_toast(&self, f: &mut Frame, area: Rect, msg: &str) {
+        let t = self.theme;
+        let text = Span::styled(
+            format!(" {} ", msg),
+            Style::default()
+                .fg(t.success)
+                .bg(t.bg)
+                .add_modifier(Modifier::BOLD),
+        );
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(t.success));
+        let inner = block.inner(area);
+        f.render_widget(block, area);
+        f.render_widget(Paragraph::new(text).wrap(Wrap { trim: true }), inner);
     }
 
     fn render_status(&self, f: &mut Frame, area: Rect) {
@@ -971,11 +1034,18 @@ impl TuiApp {
 
                 let header_prefix = if collapsed { "+ " } else { "  " };
                 let header = Span::styled(format!("{}{}> ", header_prefix, label), style);
-                let content = textwrap::fill(&display_content, area.width as usize - 4);
-                let lines: Vec<Line> = std::iter::once(Line::from(vec![header]))
-                    .chain(content.lines().map(|l| Line::from(Span::raw(format!("  {}", l)))))
-                    .chain(std::iter::once(Line::from("")))
-                    .collect();
+                let mut lines = vec![Line::from(vec![header])];
+
+                if m.role == "assistant" || m.role == "reasoning" {
+                    Self::render_highlighted(&display_content, area.width as usize - 4, &mut lines);
+                } else {
+                    let wrapped = textwrap::fill(&display_content, area.width as usize - 4);
+                    for l in wrapped.lines() {
+                        lines.push(Line::from(Span::raw(format!("  {}", l))));
+                    }
+                }
+
+                lines.push(Line::from(""));
                 ListItem::new(lines)
             })
             .collect();
@@ -984,6 +1054,64 @@ impl TuiApp {
             .block(Block::default().borders(Borders::TOP).title(" Chat "));
 
         f.render_widget(messages, area);
+    }
+
+    fn render_highlighted(content: &str, width: usize, out: &mut Vec<Line>) {
+        let t = &crate::theme::DEFAULT;
+        let code_style = Style::default().fg(t.dim).add_modifier(Modifier::DIM);
+        let fence_style = Style::default().fg(t.border).add_modifier(Modifier::DIM);
+        let lang_style = Style::default().fg(t.tool_call);
+        let text_style = Style::default().fg(t.text);
+
+        let mut in_code = false;
+        let mut code_buf = String::new();
+
+        for line in content.lines() {
+            if line.starts_with("```") {
+                if in_code {
+                    // End of code block
+                    if !code_buf.is_empty() {
+                        Self::render_code_block(&code_buf, width, fence_style, out);
+                        code_buf.clear();
+                    }
+                    out.push(Line::from(vec![Span::styled("  ───", fence_style)]));
+                    in_code = false;
+                } else {
+                    // Start of code block
+                    let lang = line.trim_start_matches("```").trim().to_string();
+                    let header = if lang.is_empty() {
+                        Span::styled("  ```", fence_style)
+                    } else {
+                        Span::styled(format!("  ```{}", lang), lang_style)
+                    };
+                    out.push(Line::from(vec![header]));
+                    in_code = true;
+                    code_buf.clear();
+                }
+            } else if in_code {
+                code_buf.push_str(line);
+                code_buf.push('\n');
+            } else {
+                let wrapped = textwrap::fill(line, width as usize);
+                for wl in wrapped.lines() {
+                    out.push(Line::from(vec![Span::styled(format!("  {}", wl), text_style)]));
+                }
+            }
+        }
+
+        if in_code && !code_buf.is_empty() {
+            Self::render_code_block(&code_buf, width, fence_style, out);
+        }
+    }
+
+    fn render_code_block(code: &str, width: usize, fence_style: Style, out: &mut Vec<Line>) {
+        let code_style = Style::default().fg(crate::theme::DEFAULT.dim).add_modifier(Modifier::DIM);
+        for line in code.lines() {
+            let wrapped = textwrap::fill(line, width.saturating_sub(2));
+            for wl in wrapped.lines() {
+                out.push(Line::from(vec![Span::styled(format!("  {}", wl), code_style)]));
+            }
+        }
     }
 
     fn render_input(&self, f: &mut Frame, area: Rect) {

@@ -37,8 +37,8 @@ Real feature gaps between the Rust reimplementation and the original [opencode](
 | Audio/sound system | `[ ]` | `packages/tui/src/audio.ts` | Events: question, permission, error, done |
 | Clipboard integration | `[x]` | `packages/tui/src/context/clipboard.tsx` | Yank last response (Ctrl+Y) |
 | Editor integration | `[ ]` | `packages/tui/src/editor.ts`, `editor-zed.ts` | Zed buffer, $EDITOR/$VISUAL |
-| Syntax highlighting | `[ ]` | `packages/tui/src/context/theme.ts` | ANSI/code block highlighting |
-| Toast notifications | `[ ]` | `packages/tui/src/ui/toast.tsx` | Inline toasts |
+| Syntax highlighting | `[x]` | `packages/tui/src/context/theme.ts` | Code blocks in assistant messages parsed and colorized |
+| Toast notifications | `[x]` | `packages/tui/src/ui/toastx.ts` | Inline toasts for actions (Ctrl+Y, Ctrl+R, Ctrl+O) |
 | Scroll acceleration | `[x]` | `packages/tui/src/util/scroll.ts` | PageUp/PageDown |
 | Multi-line input | `[x]` | `packages/tui/` | Shift+Enter newline, Ctrl+Enter submit |
 | Tool output collapse | `[x]` | `packages/tui/src/util/collapse-tool-output.ts` | Ctrl+O collapse/expand |
