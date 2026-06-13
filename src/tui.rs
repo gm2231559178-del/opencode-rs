@@ -2474,12 +2474,20 @@ impl TuiApp {
     fn render_messages(&self, f: &mut Frame, area: Rect) {
         let t = self.theme;
         let w = area.width as usize;
+        let total = self.messages.len();
+        // Estimate visible items: assume ~3 lines per message on average
+        let max_visible = (area.height.saturating_sub(2) / 3).max(1) as usize;
+        let start = if total > max_visible {
+            total.saturating_sub(max_visible).saturating_sub(self.scroll)
+        } else {
+            0
+        };
         let items: Vec<ListItem> = self
             .messages
             .iter()
             .enumerate()
-            .rev()
-            .skip(self.scroll)
+            .skip(start)
+            .take(max_visible)
             .map(|(idx, m)| {
                 let (role_color, label) = match m.role.as_str() {
                     "user" => (t.user_msg, "user"),
