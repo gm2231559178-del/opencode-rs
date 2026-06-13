@@ -31,3 +31,22 @@ pub fn human_name(tool_name: &str) -> String {
     }
     tool_name.to_string()
 }
+
+pub fn tool_icon(tool_name: &str) -> &'static str {
+    match tool_name {
+        "bash" => "$ ",
+        "read" => "\u{2192} ",  // →
+        "write" => "\u{2190} ", // ←
+        "edit" => "\u{2190} ",  // ←
+        "apply_patch" => "%",
+        "glob" => "\u{2731} ",  // ✱
+        "grep" => "\u{2731} ",  // ✱
+        "websearch" => "\u{25C6} ", // ◆
+        "webfetch" => "%",
+        "task" => "\u{2713} ",  // ✓
+        "question" => "\u{2192} ", // →
+        "skill" => "\u{2192} ",  // →
+        "todowrite" => "\u{2699} ", // ⚙
+        _ => "\u{2699} ", // ⚙ (generic)
+    }
+}

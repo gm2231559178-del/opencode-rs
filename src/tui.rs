@@ -317,10 +317,12 @@ impl TuiApp {
                         self.context_tokens += args_str.len() / 4;
                         self.context_percent = ((self.context_tokens as f64 / 100000.0) * 100.0) as u8;
                         let preview: String = args_str.chars().take(400).collect();
+                        let icon = crate::util::tool_display::tool_icon(&name);
+                        let hname = crate::util::tool_display::human_name(&name);
                         self.messages.push(TuiMessage {
             age: 0,
                             role: "tool_call".to_string(),
-                            content: format!("{} ({})\n{}", crate::util::tool_display::human_name(&name), short, preview),
+                            content: format!("{} {} ({})\n{}", icon, hname, short, preview),
                         });
                     }
                     StreamEvent::PermissionRequest { request_id, tool_name, args } => {
@@ -2125,14 +2127,14 @@ impl TuiApp {
         let ac_count = self.autocomplete_candidates.len();
         let ac_height = if has_ac { (ac_count + 1).min(10) as u16 } else { 0 };
 
-        // When sidebar is visible, split horizontally first
+        // When sidebar is visible, split horizontally — main left, sidebar right
         let main_area = if self.sidebar_visible {
             let horiz = Layout::default()
                 .direction(Direction::Horizontal)
-                .constraints([Constraint::Length(36), Constraint::Min(1)])
+                .constraints([Constraint::Min(1), Constraint::Length(42)])
                 .split(f.area());
-            self.render_sidebar(f, horiz[0]);
-            horiz[1]
+            self.render_sidebar(f, horiz[1]);
+            horiz[0]
         } else {
             f.area()
         };
@@ -2489,15 +2491,6 @@ impl TuiApp {
             .skip(start)
             .take(max_visible)
             .map(|(idx, m)| {
-                let (role_color, label) = match m.role.as_str() {
-                    "user" => (t.user_msg, "user"),
-                    "assistant" => (t.assistant_msg, "assistant"),
-                    "reasoning" => (t.dim, "think"),
-                    "tool_call" => (t.tool_call, "tool"),
-                    "tool_result" => (t.tool_result, "result"),
-                    r => (t.text, r),
-                };
-
                 let border_color = match m.role.as_str() {
                     "user" => t.user_msg,
                     "assistant" => t.assistant_msg,
@@ -2508,18 +2501,9 @@ impl TuiApp {
                 };
 
                 let bg_color = match m.role.as_str() {
-                    "user" => t.background_element,
-                    "assistant" => t.background_panel,
+                    "user" => t.background_panel,
                     _ => t.bg,
                 };
-
-                let mut fade_dim = false;
-                if m.age < 10 && (m.role == "assistant" || m.role == "reasoning") {
-                    let fade = m.age as f32 / 10.0;
-                    if fade < 0.5 {
-                        fade_dim = true;
-                    }
-                }
 
                 let collapsed = self.collapsed.contains(&idx);
                 let display_content = if collapsed && m.content.len() > 100 {
@@ -2536,15 +2520,7 @@ impl TuiApp {
                 let bar = Span::styled("▎", bar_style);
                 let pad = Span::raw(" ");
 
-                let header_style = if fade_dim {
-                    Style::default().fg(role_color).add_modifier(Modifier::DIM)
-                } else {
-                    Style::default().fg(role_color).add_modifier(Modifier::BOLD)
-                };
-                let collapse_prefix = if collapsed { "+ " } else { "" };
-                let header = Span::styled(format!("{}{}", collapse_prefix, label), header_style);
-
-                let mut lines = vec![Line::from(vec![bar, pad, header])];
+                let mut lines = vec![Line::from(vec![bar, pad])];
 
                 let content_width = w.saturating_sub(4);
                 if m.role == "assistant" || m.role == "reasoning" {
@@ -2566,10 +2542,29 @@ impl TuiApp {
             .collect();
 
         let messages = List::new(items)
-            .block(Block::default().borders(Borders::TOP).title(" Chat ").border_style(Style::default().fg(t.border)))
             .style(Style::default().bg(t.background_panel));
 
         f.render_widget(messages, area);
+
+        // Scroll indicator when scrolled up from bottom
+        if self.scroll > 0 {
+            let indicator = format!(
+                "  \u{2191} {} more  ",
+                self.scroll
+            );
+            let indicator_len = indicator.len() as u16;
+            let indicator_area = Rect {
+                x: area.right().saturating_sub(indicator_len),
+                y: area.top(),
+                width: indicator_len,
+                height: 1,
+            };
+            let indicator_widget = Paragraph::new(Line::from(Span::styled(
+                indicator,
+                Style::default().fg(t.text_dim).bg(t.background_panel).add_modifier(Modifier::DIM),
+            )));
+            f.render_widget(indicator_widget, indicator_area);
+        }
     }
 
     fn render_highlighted(content: &str, width: usize, out: &mut Vec<Line>) {
