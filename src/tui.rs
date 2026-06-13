@@ -46,6 +46,7 @@ pub enum ActiveDialog {
     Confirm { title: String, message: String, action: String },
     CommandPalette { options: Vec<SelectOption>, selected: usize, filter: String },
     Workspace,
+    Prompt { title: String, value: String, action: String, cursor: usize },
 }
 
 enum EnterAction {
@@ -56,6 +57,7 @@ enum EnterAction {
     StashInsert(String),
     SkillInsert(String),
     CommandExecute(String),
+    PromptConfirm(String, String),  // (action, value)
 }
 
 pub struct TuiApp {
@@ -489,6 +491,11 @@ impl TuiApp {
         self.push_dialog(ActiveDialog::Confirm { title, message, action });
     }
 
+    fn show_prompt(&mut self, title: String, action: String, initial: String) {
+        let cursor = initial.len();
+        self.push_dialog(ActiveDialog::Prompt { title, value: initial, action, cursor });
+    }
+
     fn build_agent_options(&self) -> Vec<SelectOption> {
         let mut options = Vec::new();
         if let Ok(session) = self.session.try_lock() {
@@ -686,6 +693,7 @@ impl TuiApp {
         options.push(SelectOption { title: "Toggle plan mode".into(), description: Some("Read-only planning mode".into()), category: Some("Session".into()), value: "plan".into() });
         options.push(SelectOption { title: "Compact conversation".into(), description: Some("Summarize and trim history".into()), category: Some("Session".into()), value: "compact".into() });
         options.push(SelectOption { title: "Session list".into(), description: Some("Browse and load saved sessions".into()), category: Some("Session".into()), value: "sessions".into() });
+        options.push(SelectOption { title: "Rename session".into(), description: Some("Change the session title".into()), category: Some("Session".into()), value: "rename".into() });
         options.push(SelectOption { title: "Undo last file change".into(), description: None, category: Some("Session".into()), value: "undo".into() });
         // Display
         options.push(SelectOption { title: "Toggle sidebar".into(), description: Some("Show or hide the sidebar panel".into()), category: Some("Display".into()), value: "sidebar".into() });
@@ -724,13 +732,42 @@ impl TuiApp {
             return Ok(false);
         }
 
+        // Special handling for Prompt dialog — intercept text input
+        if let Some(ActiveDialog::Prompt { ref mut value, ref mut cursor, .. }) = self.dialog {
+            match key.code {
+                KeyCode::Esc => {
+                    self.pop_dialog();
+                    return Ok(true);
+                }
+                KeyCode::Enter => {
+                    if let Some(d) = self.dialog.take() {
+                        if let ActiveDialog::Prompt { action, value, .. } = d {
+                            self.execute_dialog_action(EnterAction::PromptConfirm(action, value));
+                        }
+                    }
+                    return Ok(true);
+                }
+                KeyCode::Char(c) => {
+                    value.push(c);
+                    *cursor = value.len();
+                    return Ok(true);
+                }
+                KeyCode::Backspace => {
+                    value.pop();
+                    *cursor = value.len();
+                    return Ok(true);
+                }
+                _ => return Ok(true),
+            }
+        }
+
         use ActiveDialog::*;
         match key.code {
             KeyCode::Esc => {
                 match self.dialog.as_ref().unwrap() {
                     Help | Alert { .. } | Agent { .. } | Model { .. } | Theme { .. }
                     | SessionList { .. } | MCPStatus { .. } | Stash { .. } | Skill { .. }
-                    | Status { .. } | Confirm { .. } | CommandPalette { .. } | Workspace => {
+                    | Status { .. } | Confirm { .. } | CommandPalette { .. } | Workspace | Prompt { .. } => {
                         self.pop_dialog();
                     }
                 }
@@ -803,6 +840,11 @@ impl TuiApp {
                             None
                         }
                     }
+                    Prompt { title: _, value, action, cursor: _ } => {
+                        let val = value.clone();
+                        let act = action.clone();
+                        Some(EnterAction::PromptConfirm(act, val))
+                    }
                 };
                 if let Some(action) = action {
                     self.execute_dialog_action(action);
@@ -849,6 +891,21 @@ impl TuiApp {
             }
             EnterAction::CommandExecute(cmd) => {
                 self.exec_command_palette_action(&cmd);
+            }
+            EnterAction::PromptConfirm(action, value) => {
+                self.exec_prompt_action(&action, &value);
+            }
+        }
+    }
+
+    fn exec_prompt_action(&mut self, action: &str, value: &str) {
+        match action {
+            "rename_session" => {
+                if value.is_empty() { return; }
+                self.show_toast(format!("Session renamed to: {}", value));
+            }
+            _ => {
+                self.show_toast(format!("Prompt action '{}' not implemented", action));
             }
         }
     }
@@ -944,6 +1001,10 @@ impl TuiApp {
             "copy" => {
                 self.copy_last_response();
                 self.show_toast("Copied last response to clipboard".to_string());
+            }
+            "rename" => {
+                let current_title = self.session.try_lock().map(|s| s.id.clone()).unwrap_or_default();
+                self.show_prompt("Rename Session".to_string(), "rename_session".to_string(), current_title);
             }
             "quit" => {
                 self.quit = true;
@@ -2564,7 +2625,47 @@ impl TuiApp {
                 let filtered: Vec<&SelectOption> = filtered.iter().collect();
                 Self::render_select_dialog(f, t, &filtered, *selected, filter, "Command Palette", area);
             }
+            Prompt { title, value, action: _, cursor } => {
+                Self::render_prompt_dialog(f, t, title, value, *cursor, area);
+            }
         }
+    }
+
+    fn render_prompt_dialog(f: &mut Frame, t: &Theme, title: &str, value: &str, cursor: usize, area: Rect) {
+        let max_w = 60.min(area.width.saturating_sub(4)) as usize;
+        let inner = Self::centered_rect(area, max_w.min(60) as u16, 5);
+
+        let display: String = value.chars().take(max_w.saturating_sub(4)).collect();
+        let cursor_pos = cursor.min(display.len());
+
+        let mut spans = Vec::new();
+        if cursor_pos > 0 {
+            spans.push(Span::styled(display[..cursor_pos].to_string(), Style::default().fg(t.text)));
+        }
+        spans.push(Span::styled("█", Style::default().fg(t.primary)));
+        if cursor_pos < display.len() {
+            spans.push(Span::styled(display[cursor_pos..].to_string(), Style::default().fg(t.text)));
+        }
+
+        let input_line = Line::from(spans);
+        let lines = vec![
+            Line::from(Span::styled(
+                format!(" {}", title),
+                Style::default().fg(t.text).add_modifier(Modifier::BOLD),
+            )),
+            Line::from(""),
+            input_line,
+            Line::from(""),
+            Line::from(Span::styled(
+                "  Enter confirm  Esc cancel",
+                Style::default().fg(t.text_dim),
+            )),
+        ];
+
+        let para = Paragraph::new(lines)
+            .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(t.primary)));
+        f.render_widget(Clear, inner);
+        f.render_widget(para, inner);
     }
 
     fn render_help_dialog(&self, f: &mut Frame, t: &Theme) {

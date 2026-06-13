@@ -30,7 +30,7 @@ Real feature gaps between the Rust reimplementation and the original [opencode](
 | Sidebar plugins (files, MCP, LSP, todos, context) | `[~]` | `packages/tui/src/feature-plugins/sidebar/` | Toggleable left panel with 5 collapsible sections; Ctrl+B / leader+b |
 | Command palette | `[~]` | `packages/tui/src/component/command-palette.tsx` | Popup dialog with categorized commands; Ctrl+P / leader+k |
 | Leader key system | `[x]` | `packages/tui/src/keymap.tsx` | Space leader key shows menu; f/s/m/a/t/h/p/c/%/n/d/e/q/? actions |
-| Dialogs (agent, model, theme, session, MCP, stash, skill, status, help, workspace, command) | `[~]` | `packages/tui/src/component/dialog-*.tsx` | 13 dialog types: agent, model, theme, session list, MCP status, stash, skill, status overview, help, alert, confirm, workspace info, command palette |
+| Dialogs (agent, model, theme, session, MCP, stash, skill, status, help, workspace, command, prompt) | `[~]` | `packages/tui/src/component/dialog-*.tsx` | 14 dialog types: agent, model, theme, session list, MCP status, stash, skill, status overview, help, alert, confirm, workspace info, command palette, text prompt |
 | Autocomplete (`@` file, `#L` lines, frecency, references) | `[~]` | `packages/tui/src/component/prompt/autocomplete.tsx` | `@` triggers fd + directory indicator + reference candidates |
 | Thinking/reasoning display | `[x]` | `packages/tui/src/context/thinking.ts` | Collapsible reasoning blocks, Ctrl+R toggle |
 | Diff viewer (side-by-side/stacked) | `[x]` | `packages/tui/src/feature-plugins/system/diff-viewer.tsx` | Scrollable overlay with +/- colors, arrow/PgUp/PgDn/Home/End |
