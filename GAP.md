@@ -36,7 +36,7 @@ Real feature gaps between the Rust reimplementation and the original [opencode](
 | Diff viewer (side-by-side/stacked) | `[x]` | `packages/tui/src/feature-plugins/system/diff-viewer.tsx` | Scrollable overlay with +/- colors, arrow/PgUp/PgDn/Home/End |
 | Audio/sound system | `[ ]` | `packages/tui/src/audio.ts` | Events: question, permission, error, done |
 | Clipboard integration | `[x]` | `packages/tui/src/context/clipboard.tsx` | Yank last response (Ctrl+Y) |
-| Editor integration | `[ ]` | `packages/tui/src/editor.ts`, `editor-zed.ts` | Zed buffer, $EDITOR/$VISUAL |
+| Editor integration | `[x]` | `packages/tui/src/editor.ts`, `editor-zed.ts` | Ctrl+E opens last edited file in $EDITOR/$VISUAL/vi |
 | Syntax highlighting | `[x]` | `packages/tui/src/context/theme.ts` | Code blocks in assistant messages parsed and colorized |
 | Toast notifications | `[x]` | `packages/tui/src/ui/toastx.ts` | Inline toasts for actions (Ctrl+Y, Ctrl+R, Ctrl+O) |
 | Scroll acceleration | `[x]` | `packages/tui/src/util/scroll.ts` | PageUp/PageDown |

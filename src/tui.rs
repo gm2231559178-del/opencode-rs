@@ -779,6 +779,31 @@ impl TuiApp {
         }
     }
 
+    fn open_last_edited_file(&mut self) {
+        let file_path = self
+            .session
+            .try_lock()
+            .ok()
+            .and_then(|s| s.snapshots.last().map(|e| e.file_path.clone()));
+        match file_path {
+            Some(path) if !path.is_empty() => {
+                let editor = std::env::var("EDITOR")
+                    .or_else(|_| std::env::var("VISUAL"))
+                    .unwrap_or_else(|_| "vi".to_string());
+                self.show_toast(format!("Opening {} in {}", &path, editor));
+                std::thread::spawn(move || {
+                    std::process::Command::new(&editor)
+                        .arg(&path)
+                        .spawn()
+                        .ok();
+                });
+            }
+            _ => {
+                self.show_toast("No edited file to open".to_string());
+            }
+        }
+    }
+
     fn trigger_autocomplete(&mut self) {
         let before_cursor = &self.input[..self.cursor];
 
@@ -932,6 +957,10 @@ impl TuiApp {
                 KeyCode::Char('n') => Some("/new"),
                 KeyCode::Char('h') => Some("/help"),
                 KeyCode::Char('d') => Some("/diff"),
+                KeyCode::Char('e') => {
+                    self.open_last_edited_file();
+                    None
+                }
                 KeyCode::Char('q') => { self.quit = true; None }
                 KeyCode::Char('m') => Some("/model "),
                 KeyCode::Char('a') => Some("/agent "),
@@ -968,6 +997,9 @@ impl TuiApp {
             KeyCode::Char('y') if key.modifiers.contains(KeyModifiers::CONTROL) && !self.streaming => {
                 self.copy_last_response();
                 self.show_toast("Copied last response to clipboard".to_string());
+            }
+            KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) && !self.streaming => {
+                self.open_last_edited_file();
             }
             KeyCode::Char('r') if key.modifiers.contains(KeyModifiers::CONTROL) && !self.streaming => {
                 self.reasoning_visible = !self.reasoning_visible;
@@ -1436,7 +1468,7 @@ impl TuiApp {
         let title = if self.pending_perm.is_some() {
             " Approve? (y=allow / n=deny) ".to_string()
         } else if self.leader_mode {
-            " Leader: (f)iles (s)essions (/)plan (t)heme (n)ew (d)iff (m)odel (a)gent (h)elp (q)uit ".to_string()
+            " Leader: (f)iles (s)essions (/)plan (t)heme (n)ew (d)iff (e)dit (m)odel (a)gent (h)elp (q)uit ".to_string()
         } else if !self.autocomplete_candidates.is_empty() {
             let idx = self.autocomplete_idx.max(0) as usize;
             let total = self.autocomplete_candidates.len();
@@ -1452,9 +1484,9 @@ impl TuiApp {
             )
         } else {
             let hint = if self.input.contains('\n') {
-                " Ctrl+Enter to send | Esc to cancel | Ctrl+R: toggle thinking | Ctrl+O: collapse"
+                " Ctrl+Enter to send | Esc to cancel | Ctrl+R/E/O: thinking/open/collapse"
             } else {
-                " Shift+Enter for newline | Ctrl+R: toggle thinking | Ctrl+O: collapse"
+                " Shift+Enter for newline | Ctrl+R/E/O: thinking/open/collapse"
             };
             format!(
                 " Input{}{} ",
