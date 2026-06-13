@@ -2126,10 +2126,22 @@ impl TuiApp {
     }
 
     fn toggle_collapse_last_tool(&mut self) {
-        let last_tool = self.messages.iter().rposition(|m| m.role == "tool_result" || m.role == "tool_call");
-        if let Some(idx) = last_tool {
-            if !self.collapsed.remove(&idx) {
-                self.collapsed.insert(idx);
+        let tool_indices: Vec<usize> = self.messages.iter().enumerate()
+            .filter(|(_, m)| m.role == "tool_result" || m.role == "tool_call")
+            .map(|(i, _)| i)
+            .collect();
+
+        if tool_indices.is_empty() { return; }
+
+        let all_collapsed = tool_indices.iter().all(|i| self.collapsed.contains(i));
+
+        if all_collapsed {
+            for i in &tool_indices {
+                self.collapsed.remove(i);
+            }
+        } else {
+            for i in &tool_indices {
+                self.collapsed.insert(*i);
             }
         }
     }
