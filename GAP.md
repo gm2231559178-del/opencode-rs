@@ -28,7 +28,7 @@ Real feature gaps between the Rust reimplementation and the original [opencode](
 | Gap | Status | Original location | Notes |
 |-----|--------|-------------------|-------|
 | Sidebar plugins (files, MCP, LSP, todos, context) | `[ ]` | `packages/tui/src/feature-plugins/sidebar/` | 5 sidebar panels with live status |
-| Command palette | `[ ]` | `packages/tui/src/component/command-palette.tsx` | Vim-like `:` command entry |
+| Command palette | `[~]` | `packages/tui/src/component/command-palette.tsx` | `/` slash-command autocomplete (Tab/Enter to select) |
 | Leader key system | `[ ]` | `packages/tui/src/keymap.tsx` | Space leader, modal keybindings |
 | 30+ dialogs | `[ ]` | `packages/tui/src/component/dialog-*.tsx` | Agent, model, MCP, workspace, session, tag, skill, theme, stash, provider, console, export, etc. |
 | Autocomplete (`@` file, `#L` lines, frecency) | `[~]` | `packages/tui/src/component/prompt/autocomplete.tsx` | `@` triggers fd, dir/ indicator, #L range support |

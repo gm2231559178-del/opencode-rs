@@ -55,6 +55,15 @@ pub struct TuiMessage {
     pub content: String,
 }
 
+const SLASH_COMMANDS: &[&str] = &[
+    "/help", "/plan", "/compact", "/diff", "/theme", "/theme <name>",
+    "/notify", "/new", "/model", "/model <name>", "/agent", "/agent <name>",
+    "/sessions", "/session load <id>", "/session fork", "/session rename <id> <name>",
+    "/session delete <id>", "/session new", "/undo", "/share", "/share list",
+    "/share import <id> <secret>", "/stats", "/mcp", "/plugin", "/diagnostics <file>",
+    "/exit",
+];
+
 impl TuiApp {
     pub fn new(session: Session, store: Option<SessionStore>) -> Self {
         let model_name = session.model.clone();
@@ -656,11 +665,28 @@ impl TuiApp {
 
     fn trigger_autocomplete(&mut self) {
         let before_cursor = &self.input[..self.cursor];
+
+        // Slash command autocomplete
+        if before_cursor.starts_with('/') && !before_cursor.contains(' ') {
+            let query = before_cursor.to_string();
+            let mut candidates: Vec<String> = SLASH_COMMANDS
+                .iter()
+                .filter(|cmd| cmd.starts_with(&query))
+                .map(|s| s.to_string())
+                .collect();
+            candidates.sort();
+            if candidates.len() > 1 || (candidates.len() == 1 && candidates[0] != query) {
+                self.autocomplete_candidates = candidates;
+                self.autocomplete_idx = if self.autocomplete_candidates.is_empty() { -1 } else { 0 };
+                return;
+            }
+        }
+
+        // @ file autocomplete
         let at_pos = before_cursor.rfind('@');
         match at_pos {
             Some(pos) => {
                 let query = before_cursor[pos + 1..].to_string();
-                // Strip any trailing line range (#L...)
                 let file_query = query.split('#').next().unwrap_or(&query).to_string();
                 let pattern = if file_query.is_empty() {
                     "*".to_string()
@@ -711,9 +737,19 @@ impl TuiApp {
         }
         let selected = &self.autocomplete_candidates[self.autocomplete_idx as usize];
         let before_cursor = &self.input[..self.cursor];
+
+        // Slash command completion
+        if before_cursor.starts_with('/') && !before_cursor.contains(' ') {
+            let after_cursor = &self.input[self.cursor..];
+            self.input = format!("{} {}", selected, after_cursor);
+            self.cursor = selected.len() + 1;
+            self.autocomplete_candidates.clear();
+            self.autocomplete_idx = -1;
+            return true;
+        }
+
         if let Some(at_pos) = before_cursor.rfind('@') {
             let after_cursor = &self.input[self.cursor..];
-            // Check if user typed a #L suffix after the @
             let after_at = &before_cursor[at_pos + 1..];
             let suffix = if let Some(hash_pos) = after_at.find('#') {
                 after_at[hash_pos..].to_string()
@@ -723,7 +759,6 @@ impl TuiApp {
             let replacement = if suffix.is_empty() {
                 format!("{} ", selected)
             } else {
-                // Keep the line range suffix
                 format!("{}", selected)
             };
             let new_input = format!("{}{}{}", &self.input[..at_pos], replacement, after_cursor);
@@ -858,7 +893,7 @@ impl TuiApp {
             KeyCode::Char(c) => {
                 self.input.insert(self.cursor, c);
                 self.cursor += 1;
-                if c == '@' {
+                if c == '@' || (c == '/' && self.cursor == 1) {
                     self.trigger_autocomplete();
                 } else if !self.autocomplete_candidates.is_empty() {
                     self.trigger_autocomplete();
@@ -1169,7 +1204,11 @@ impl TuiApp {
             } else {
                 ""
             };
-            format!(" @ files ({}/{}) {} ", idx + 1, total, preview)
+            format!(
+                " {} ({}/{}) {} ",
+                if self.input.starts_with('/') && !self.input.contains(' ') { "Commands" } else { "@ files" },
+                idx + 1, total, preview
+            )
         } else {
             let hint = if self.input.contains('\n') {
                 " Ctrl+Enter to send | Esc to cancel | Ctrl+R: toggle thinking | Ctrl+O: collapse"
