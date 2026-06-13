@@ -287,6 +287,7 @@ impl TuiApp {
         if !self.streaming {
             return;
         }
+        let prev_len = self.messages.len();
         let mut done = false;
         if let Some(rx) = &mut self.stream_rx {
             while let Ok(event) = rx.try_recv() {
@@ -436,8 +437,10 @@ impl TuiApp {
             self.save_session();
         }
         // Sticky scroll: when scrolled up, keep view stable as new messages arrive
-        if self.scroll > 0 {
-            self.scroll = self.scroll.saturating_add(1);
+        let new_len = self.messages.len();
+        let delta = new_len.saturating_sub(prev_len);
+        if self.scroll > 0 && delta > 0 {
+            self.scroll = self.scroll.saturating_add(delta);
         }
     }
 
@@ -1513,6 +1516,7 @@ impl TuiApp {
 
     fn cmd_clear_session(&mut self) -> String {
         self.messages.clear();
+        self.scroll = 0;
         self.prompt_count = 0;
         "Session cleared.".to_string()
     }
