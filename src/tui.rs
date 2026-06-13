@@ -2432,6 +2432,7 @@ impl TuiApp {
 
     fn render_messages(&self, f: &mut Frame, area: Rect) {
         let t = self.theme;
+        let w = area.width as usize;
         let items: Vec<ListItem> = self
             .messages
             .iter()
@@ -2439,27 +2440,37 @@ impl TuiApp {
             .rev()
             .skip(self.scroll)
             .map(|(idx, m)| {
-                let mut style = match m.role.as_str() {
-                    "user" => Style::default().fg(t.user_msg).add_modifier(Modifier::BOLD),
-                    "assistant" => Style::default().fg(t.assistant_msg),
-                    "reasoning" => Style::default().fg(t.dim).add_modifier(Modifier::DIM),
-                    "tool_call" => Style::default().fg(t.tool_call).add_modifier(Modifier::DIM),
-                    "tool_result" => Style::default().fg(t.tool_result).add_modifier(Modifier::DIM),
-                    _ => Style::default().fg(t.text),
+                let (role_color, label) = match m.role.as_str() {
+                    "user" => (t.user_msg, "user"),
+                    "assistant" => (t.assistant_msg, "assistant"),
+                    "reasoning" => (t.dim, "think"),
+                    "tool_call" => (t.tool_call, "tool"),
+                    "tool_result" => (t.tool_result, "result"),
+                    r => (t.text, r),
                 };
-                // Fade-in: first 10 frames ramp from dim to full brightness
+
+                let border_color = match m.role.as_str() {
+                    "user" => t.user_msg,
+                    "assistant" => t.assistant_msg,
+                    "reasoning" => t.text_muted,
+                    "tool_call" => t.tool_call,
+                    "tool_result" => t.tool_result,
+                    _ => t.border,
+                };
+
+                let bg_color = match m.role.as_str() {
+                    "user" => t.background_element,
+                    "assistant" => t.background_panel,
+                    _ => t.bg,
+                };
+
+                let mut fade_dim = false;
                 if m.age < 10 && (m.role == "assistant" || m.role == "reasoning") {
                     let fade = (m.age as f32 / 10.0);
                     if fade < 0.5 {
-                        style = style.add_modifier(Modifier::DIM);
+                        fade_dim = true;
                     }
                 }
-                let label = match m.role.as_str() {
-                    "tool_call" => "tool".to_string(),
-                    "tool_result" => "result".to_string(),
-                    "reasoning" => "think".to_string(),
-                    r => r.to_string(),
-                };
 
                 let collapsed = self.collapsed.contains(&idx);
                 let display_content = if collapsed && m.content.len() > 100 {
@@ -2471,21 +2482,37 @@ impl TuiApp {
                     m.content.clone()
                 };
 
-                let header_prefix = if collapsed { "+ " } else { "  " };
-                let header = Span::styled(format!("{}{}> ", header_prefix, label), style);
-                let mut lines = vec![Line::from(vec![header])];
+                // Build lines with left border marker "▎" and content
+                let bar_style = Style::default().fg(border_color);
+                let bar = Span::styled("▎", bar_style);
+                let pad = Span::raw(" ");
 
-                if m.role == "assistant" || m.role == "reasoning" {
-                    Self::render_highlighted(&display_content, area.width as usize - 4, &mut lines);
+                let header_style = if fade_dim {
+                    Style::default().fg(role_color).add_modifier(Modifier::DIM)
                 } else {
-                    let wrapped = textwrap::fill(&display_content, area.width as usize - 4);
+                    Style::default().fg(role_color).add_modifier(Modifier::BOLD)
+                };
+                let collapse_prefix = if collapsed { "+ " } else { "" };
+                let header = Span::styled(format!("{}{}", collapse_prefix, label), header_style);
+
+                let mut lines = vec![Line::from(vec![bar, pad, header])];
+
+                let content_width = w.saturating_sub(4);
+                if m.role == "assistant" || m.role == "reasoning" {
+                    Self::render_highlighted(&display_content, content_width, &mut lines);
+                } else {
+                    let wrapped = textwrap::fill(&display_content, content_width);
                     for l in wrapped.lines() {
-                        lines.push(Line::from(Span::raw(format!("  {}", l))));
+                        lines.push(Line::from(vec![
+                            Span::styled("▎", bar_style),
+                            Span::raw(" "),
+                            Span::raw(format!(" {}", l)),
+                        ]));
                     }
                 }
 
                 lines.push(Line::from(""));
-                ListItem::new(lines)
+                ListItem::new(lines).style(Style::default().bg(bg_color))
             })
             .collect();
 
@@ -2497,7 +2524,7 @@ impl TuiApp {
     }
 
     fn render_highlighted(content: &str, width: usize, out: &mut Vec<Line>) {
-        let t = &crate::theme::DEFAULT;
+        let t = &crate::theme::DEFAULT; // Uses global DEFAULT for syntax; actual theme colors are set at the caller
         let code_style = Style::default().fg(t.dim).add_modifier(Modifier::DIM);
         let fence_style = Style::default().fg(t.border).add_modifier(Modifier::DIM);
         let lang_style = Style::default().fg(t.tool_call);
