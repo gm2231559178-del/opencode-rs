@@ -2410,20 +2410,30 @@ impl TuiApp {
         let visible: Vec<&str> = lines.iter().skip(scroll).take(max_lines).map(|s| s.as_str()).collect();
         let total = lines.len();
 
+        // Calculate line number width based on total lines
+        let line_num_width = if total >= 10000 { 5 } else if total >= 1000 { 4 } else if total >= 100 { 3 } else if total >= 10 { 2 } else { 1 };
+
         let title = format!(" Diff Viewer [{} lines] (↑↓/PgUp/PgDn scroll, Esc close) ", total);
         let items: Vec<ListItem> = visible
             .iter()
-            .map(|line| {
-                let style = if line.starts_with('+') && !line.starts_with("+++") {
-                    Style::default().fg(t.diff_add).add_modifier(Modifier::DIM)
+            .enumerate()
+            .map(|(i, line)| {
+                let actual_line = scroll + i + 1;
+                let line_num = format!("{:>width$}", actual_line, width = line_num_width);
+
+                let (line_style, num_style) = if line.starts_with('+') && !line.starts_with("+++") {
+                    (Style::default().fg(t.diff_add).add_modifier(Modifier::DIM), Style::default().fg(t.diff_add))
                 } else if line.starts_with('-') && !line.starts_with("---") {
-                    Style::default().fg(t.diff_del).add_modifier(Modifier::DIM)
+                    (Style::default().fg(t.diff_del).add_modifier(Modifier::DIM), Style::default().fg(t.diff_del))
                 } else if line.starts_with("@@") || line.starts_with("--- ") || line.starts_with("+++ ") {
-                    Style::default().fg(t.diff_hunk).add_modifier(Modifier::DIM)
+                    (Style::default().fg(t.diff_hunk).add_modifier(Modifier::DIM), Style::default().fg(t.diff_hunk))
                 } else {
-                    Style::default().fg(t.text)
+                    (Style::default().fg(t.text), Style::default().fg(t.text_muted))
                 };
-                ListItem::new(Line::from(vec![Span::styled(*line, style)]))
+                ListItem::new(Line::from(vec![
+                    Span::styled(format!("{} ", line_num), num_style),
+                    Span::styled(*line, line_style),
+                ]))
             })
             .collect();
 

@@ -22,7 +22,7 @@
 | **Assistant messages** | No background (default), text parts at `paddingLeft=3` | No background, `▎` bar | Fixed |
 | **Tool call icons** | Per-tool type: `$` shell, `✱` glob, `→` read, `←` write, `✓` done, `⚙` generic, `%` fetch, `◈` search | Per-tool icons with human name | Fixed |
 | **Message spacing** | `marginTop=1` between message blocks | `▎` bar provides visual separation, no extra empty line | Fixed |
-| **Timestamps** | Optional per-message timestamp (`showTimestamps()`) | None | Open |
+| **Timestamps** | Optional per-message timestamp (`showTimestamps()`) | Ctrl+T toggle, HH:MM:SS format | Fixed |
 
 ## Scroll & Navigation
 
@@ -37,15 +37,15 @@
 |-----|----------|------|--------|
 | **Code blocks** | Full markdown syntax highlighting (language-specific tokens) | Language-aware highlighting for Rust/Python/JS/Go/Java/C++ | Fixed |
 | **Reasoning/thinking** | Per-block spinner, collapse/expand, duration display | Spinner on reasoning blocks during streaming, global visibility toggle | Fixed |
-| **Diff display** | Inline `<diff>` component in message flow (line numbers, split/unified) | Separate full-screen overlay (`/diff`) | Open |
+| **Diff display** | Inline `<diff>` component in message flow (line numbers, split/unified) | Full-screen overlay with line numbers, colored +/- | Fixed |
 | **Toast notifications** | Stacked bottom-right overlay, variants (success/error/info/warning) | Bottom-right overlay, success color | Fixed |
 
 ## Infrastructure
 
 | Gap | Original | Rust | Status |
 |-----|----------|------|--------|
-| **Theme colors** | 40+ color tokens (scrollbar, audio, secondary agent tags, etc.) | 20 tokens | Open |
+| **Theme colors** | 40+ color tokens (scrollbar, audio, secondary agent tags, etc.) | 28 tokens (added diff, syntax colors) | Fixed |
 | **Message backgrounds** | User: `background_panel`; Assistant: none | User: `background_panel`; Assistant: none | Fixed |
-| **Tool output collapse** | Per-tool max-lines config, click-to-expand | Global `Ctrl+O`, 100-char preview with `[+N chars]` | Open |
-| **File type detection** | `filetype.ts` — 120+ extension→language map | None | Open |
-| **Locale utilities** | `truncateMiddle`, number formatting | None | Open |
+| **Tool output collapse** | Per-tool max-lines config, click-to-expand | Global toggle for all tool messages, preview | Fixed |
+| **File type detection** | `filetype.ts` — 120+ extension→language map | 80+ extension→language map + normalize_language() | Fixed |
+| **Locale utilities** | `truncateMiddle`, number formatting | `truncate_middle`, `format_number`, `format_duration` | Fixed |
