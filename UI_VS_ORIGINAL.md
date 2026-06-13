@@ -35,7 +35,7 @@
 
 | Gap | Original | Rust | Status |
 |-----|----------|------|--------|
-| **Code blocks** | Full markdown syntax highlighting (language-specific tokens) | Fence detection only, uniform dim style, diff lines colored | Open |
+| **Code blocks** | Full markdown syntax highlighting (language-specific tokens) | Language-aware highlighting for Rust/Python/JS/Go/Java/C++ | Fixed |
 | **Reasoning/thinking** | Per-block spinner, collapse/expand, duration display | Global toggle (`reasoning_visible`), no spinner/duration | Open |
 | **Diff display** | Inline `<diff>` component in message flow (line numbers, split/unified) | Separate full-screen overlay (`/diff`) | Open |
 | **Toast notifications** | Stacked bottom-right overlay, variants (success/error/info/warning) | Bottom-right overlay, success color | Fixed |

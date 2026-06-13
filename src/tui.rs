@@ -2523,7 +2523,7 @@ impl TuiApp {
 
                 let content_width = w.saturating_sub(4);
                 if m.role == "assistant" || m.role == "reasoning" {
-                    Self::render_highlighted(&display_content, content_width, &mut lines);
+                    Self::render_highlighted(&display_content, content_width, &mut lines, t);
                 } else {
                     let wrapped = textwrap::fill(&display_content, content_width);
                     for l in wrapped.lines() {
@@ -2566,23 +2566,23 @@ impl TuiApp {
         }
     }
 
-    fn render_highlighted(content: &str, width: usize, out: &mut Vec<Line>) {
-        let t = &crate::theme::DEFAULT; // Uses global DEFAULT for syntax; actual theme colors are set at the caller
-        let fence_style = Style::default().fg(t.border).add_modifier(Modifier::DIM);
-        let lang_style = Style::default().fg(t.tool_call);
-        let text_style = Style::default().fg(t.text);
-        let diff_add = Style::default().fg(t.success).add_modifier(Modifier::DIM);
-        let diff_del = Style::default().fg(t.error).add_modifier(Modifier::DIM);
-        let diff_hunk = Style::default().fg(t.accent).add_modifier(Modifier::DIM);
+    fn render_highlighted(content: &str, width: usize, out: &mut Vec<Line>, theme: &Theme) {
+        let fence_style = Style::default().fg(theme.border).add_modifier(Modifier::DIM);
+        let lang_style = Style::default().fg(theme.tool_call);
+        let text_style = Style::default().fg(theme.text);
+        let diff_add = Style::default().fg(theme.success).add_modifier(Modifier::DIM);
+        let diff_del = Style::default().fg(theme.error).add_modifier(Modifier::DIM);
+        let diff_hunk = Style::default().fg(theme.accent).add_modifier(Modifier::DIM);
 
         let mut in_code = false;
         let mut code_buf = String::new();
+        let mut code_lang = String::new();
 
         for line in content.lines() {
             if line.starts_with("```") {
                 if in_code {
                     if !code_buf.is_empty() {
-                        Self::render_code_block(&code_buf, width, fence_style, out);
+                        Self::render_code_block(&code_buf, width, &code_lang, out, theme);
                         code_buf.clear();
                     }
                     out.push(Line::from(vec![Span::styled("  ───", fence_style)]));
@@ -2596,6 +2596,7 @@ impl TuiApp {
                     };
                     out.push(Line::from(vec![header]));
                     in_code = true;
+                    code_lang = lang;
                     code_buf.clear();
                 }
             } else if in_code {
@@ -2618,32 +2619,202 @@ impl TuiApp {
         }
 
         if in_code && !code_buf.is_empty() {
-            Self::render_code_block(&code_buf, width, fence_style, out);
+            Self::render_code_block(&code_buf, width, &code_lang, out, theme);
         }
     }
 
-    fn render_code_block(code: &str, width: usize, _fence_style: Style, out: &mut Vec<Line>) {
-        let t = &crate::theme::DEFAULT;
-        let code_style = Style::default().fg(t.dim).add_modifier(Modifier::DIM);
-        let diff_add = Style::default().fg(t.success).add_modifier(Modifier::DIM);
-        let diff_del = Style::default().fg(t.error).add_modifier(Modifier::DIM);
-        let diff_hunk = Style::default().fg(t.accent).add_modifier(Modifier::DIM);
+    fn render_code_block(code: &str, width: usize, lang: &str, out: &mut Vec<Line>, theme: &Theme) {
+        let code_style = Style::default().fg(theme.dim).add_modifier(Modifier::DIM);
+        let diff_add = Style::default().fg(theme.success).add_modifier(Modifier::DIM);
+        let diff_del = Style::default().fg(theme.error).add_modifier(Modifier::DIM);
+        let diff_hunk = Style::default().fg(theme.accent).add_modifier(Modifier::DIM);
+
         for line in code.lines() {
-            let style = if line.starts_with('+') && !line.starts_with("+++") {
-                diff_add
+            if line.starts_with('+') && !line.starts_with("+++") {
+                let wrapped = textwrap::fill(line, width.saturating_sub(2));
+                for wl in wrapped.lines() {
+                    out.push(Line::from(vec![Span::styled(format!("  {}", wl), diff_add)]));
+                }
             } else if line.starts_with('-') && !line.starts_with("---") {
-                diff_del
+                let wrapped = textwrap::fill(line, width.saturating_sub(2));
+                for wl in wrapped.lines() {
+                    out.push(Line::from(vec![Span::styled(format!("  {}", wl), diff_del)]));
+                }
             } else if line.starts_with("@@") || line.starts_with("--- ") || line.starts_with("+++ ") {
-                diff_hunk
+                let wrapped = textwrap::fill(line, width.saturating_sub(2));
+                for wl in wrapped.lines() {
+                    out.push(Line::from(vec![Span::styled(format!("  {}", wl), diff_hunk)]));
+                }
             } else {
-                code_style
-            };
-            let wrapped = textwrap::fill(line, width.saturating_sub(2));
-            for wl in wrapped.lines() {
-                out.push(Line::from(vec![Span::styled(format!("  {}", wl), style)]));
+                let wrapped = textwrap::fill(line, width.saturating_sub(2));
+                for wl in wrapped.lines() {
+                    let mut line_spans = vec![Span::raw("  ")];
+                    line_spans.extend(Self::syntax_highlight_line(wl, lang, theme));
+                    out.push(Line::from(line_spans));
+                }
             }
         }
     }
+
+    fn syntax_highlight_line(line: &str, lang: &str, theme: &Theme) -> Vec<Span<'static>> {
+        if line.is_empty() {
+            return Vec::new();
+        }
+
+        let kw_style = Style::default().fg(theme.accent);
+        let str_style = Style::default().fg(theme.success);
+        let comment_style = Style::default().fg(theme.text_muted);
+        let num_style = Style::default().fg(theme.primary);
+        let builtin_style = Style::default().fg(theme.secondary);
+
+        let line = line.trim_end();
+        let (comment_prefix, is_comment_line) = Self::get_comment_info(line, lang);
+        if is_comment_line {
+            return vec![Span::styled(line.to_string(), comment_style)];
+        }
+
+        let keywords = Self::get_keywords(lang);
+        let mut spans = Vec::new();
+        let mut i = 0;
+        let chars: Vec<char> = line.chars().collect();
+
+        while i < chars.len() {
+            // Check for comment (inline)
+            if let Some(prefix) = comment_prefix {
+                if i + prefix.len() <= chars.len() {
+                    let slice: String = chars[i..].iter().collect();
+                    if slice.starts_with(prefix) {
+                        let rest: String = chars[i..].iter().collect();
+                        spans.push(Span::styled(rest, comment_style));
+                        break;
+                    }
+                }
+            }
+
+            // Check for string literals
+            if chars[i] == '"' {
+                let start = i;
+                i += 1;
+                while i < chars.len() && chars[i] != '"' {
+                    if chars[i] == '\\' { i += 1; }
+                    i += 1;
+                }
+                if i < chars.len() { i += 1; }
+                let s: String = chars[start..i].iter().collect();
+                spans.push(Span::styled(s, str_style));
+                continue;
+            }
+
+            if chars[i] == '\'' {
+                let start = i;
+                i += 1;
+                while i < chars.len() && chars[i] != '\'' {
+                    if chars[i] == '\\' { i += 1; }
+                    i += 1;
+                }
+                if i < chars.len() { i += 1; }
+                let s: String = chars[start..i].iter().collect();
+                spans.push(Span::styled(s, str_style));
+                continue;
+            }
+
+            if chars[i] == '`' {
+                let start = i;
+                i += 1;
+                while i < chars.len() && chars[i] != '`' {
+                    if chars[i] == '\\' { i += 1; }
+                    i += 1;
+                }
+                if i < chars.len() { i += 1; }
+                let s: String = chars[start..i].iter().collect();
+                spans.push(Span::styled(s, str_style));
+                continue;
+            }
+
+            // Numbers
+            if chars[i].is_ascii_digit() {
+                let start = i;
+                i += 1;
+                while i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == '.' || chars[i] == 'x' || chars[i] == 'X' || ('a'..='f').contains(&chars[i]) || ('A'..='F').contains(&chars[i])) {
+                    if chars[i] == '.' && i + 1 < chars.len() && !chars[i+1].is_ascii_digit() { break; }
+                    i += 1;
+                }
+                let s: String = chars[start..i].iter().collect();
+                spans.push(Span::styled(s, num_style));
+                continue;
+            }
+
+            // Identifiers and keywords
+            if chars[i].is_alphabetic() || chars[i] == '_' {
+                let start = i;
+                while i < chars.len() && (chars[i].is_alphanumeric() || chars[i] == '_') {
+                    i += 1;
+                }
+                let word: String = chars[start..i].iter().collect();
+
+                if keywords.contains(&word.as_str()) {
+                    spans.push(Span::styled(word, kw_style));
+                } else if Self::is_builtin(&word, lang) {
+                    spans.push(Span::styled(word, builtin_style));
+                } else {
+                    spans.push(Span::raw(word));
+                }
+                continue;
+            }
+
+            // Skip whitespace and other characters
+            spans.push(Span::raw(chars[i].to_string()));
+            i += 1;
+        }
+
+        spans
+    }
+    fn get_comment_info(line: &str, lang: &str) -> (Option<&'static str>, bool) {
+        let (single, can_be_inline): (&str, bool) = match lang {
+            "rust" | "rs" | "go" | "c" | "cpp" | "c++" | "cxx" | "java" | "js" | "javascript" | "ts" | "typescript" | "swift" | "kotlin" | "scala" | "dart" | "zig" => ("//", true),
+            "python" | "py" | "r" | "ruby" | "rb" | "yaml" | "yml" | "toml" | "ini" | "cfg" | "perl" | "pl" | "elixir" | "ex" | "exs" => ("#", true),
+            "lua" => ("--", true),
+            "sql" => ("--", true),
+            "haskell" | "hs" => ("--", true),
+            "clojure" | "clj" | "lisp" | "el" | "scheme" => (";", true),
+            "html" | "xml" | "svg" => ("<!--", false),
+            _ => ("", false),
+        };
+
+        if single.is_empty() {
+            return (None, false);
+        }
+
+        let trimmed = line.trim_start();
+        if trimmed.starts_with(single) {
+            return (Some(single), true);
+        }
+        if can_be_inline {
+            return (Some(single), false);
+        }
+
+        (None, false)
+    }
+
+    fn get_keywords(lang: &str) -> &'static [&'static str] {
+    match lang {
+        "rust" | "rs" => &["as", "break", "const", "continue", "crate", "else", "enum", "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub", "ref", "return", "self", "Self", "static", "struct", "super", "trait", "true", "type", "unsafe", "use", "where", "while", "async", "await", "dyn", "try"],
+        "go" => &["break", "case", "chan", "const", "continue", "default", "defer", "else", "fallthrough", "for", "func", "go", "goto", "if", "import", "interface", "map", "package", "range", "return", "select", "struct", "switch", "type", "var"],
+        "python" | "py" => &["False", "None", "True", "and", "as", "assert", "async", "await", "break", "class", "continue", "def", "del", "elif", "else", "except", "finally", "for", "from", "global", "if", "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise", "return", "try", "while", "with", "yield"],
+        "js" | "javascript" | "ts" | "typescript" => &["async", "await", "break", "case", "catch", "class", "const", "continue", "debugger", "default", "delete", "do", "else", "enum", "export", "extends", "false", "finally", "for", "function", "if", "import", "in", "instanceof", "let", "new", "null", "of", "return", "super", "switch", "this", "throw", "true", "try", "typeof", "undefined", "var", "void", "while", "with", "yield"],
+        "java" => &["abstract", "assert", "boolean", "break", "byte", "case", "catch", "char", "class", "const", "continue", "default", "do", "double", "else", "enum", "extends", "false", "final", "finally", "float", "for", "goto", "if", "implements", "import", "instanceof", "int", "interface", "long", "native", "new", "null", "package", "private", "protected", "public", "return", "short", "static", "strictfp", "super", "switch", "synchronized", "this", "throw", "throws", "transient", "true", "try", "void", "volatile", "while"],
+        "c" | "c++" | "cpp" | "cxx" => &["auto", "bool", "break", "case", "catch", "char", "class", "const", "constexpr", "continue", "default", "delete", "do", "double", "else", "enum", "explicit", "extern", "false", "float", "for", "friend", "goto", "if", "inline", "int", "long", "namespace", "new", "noexcept", "nullptr", "operator", "override", "private", "protected", "public", "return", "short", "signed", "sizeof", "static", "struct", "switch", "template", "this", "throw", "true", "try", "typedef", "typename", "union", "unsigned", "using", "virtual", "void", "volatile", "while"],
+        _ => &[],
+    }
+}
+
+    fn is_builtin(word: &str, lang: &str) -> bool {
+    match lang {
+        "python" | "py" => matches!(word, "print" | "len" | "range" | "type" | "str" | "int" | "float" | "list" | "dict" | "set" | "tuple" | "bool" | "super" | "self" | "open" | "map" | "filter" | "zip" | "enumerate" | "sorted" | "reversed" | "any" | "all" | "sum" | "min" | "max" | "abs" | "round" | "isinstance" | "hasattr" | "getattr" | "setattr" | "ValueError" | "TypeError" | "KeyError" | "Exception" | "BaseException" | "object" | "property" | "staticmethod" | "classmethod"),
+        "js" | "javascript" | "ts" | "typescript" => matches!(word, "console" | "log" | "error" | "warn" | "require" | "module" | "exports" | "process" | "Buffer" | "setTimeout" | "setInterval" | "fetch" | "Promise" | "Array" | "Object" | "String" | "Number" | "Boolean" | "Map" | "Set" | "Symbol" | "JSON" | "Math" | "Date" | "RegExp" | "Error" | "undefined" | "null" | "true" | "false" | "window" | "document" | "globalThis" | "exports" | "describe" | "it" | "test" | "expect" | "jest"),
+        _ => false,
+    }
+}
 
     fn render_autocomplete_popup(&self, f: &mut Frame, area: Rect, candidates: &[String], idx: isize) {
         let t = self.theme;
