@@ -1,0 +1,21 @@
+// opencode-rs configuration
+// See https://opencode.ai for documentation
+
+{
+  "provider": {},
+  "model": "opencode/big-pickle",
+  "permission": {
+    "auto_approve": [],
+    "deny": []
+  },
+  "tools": {
+    "enabled": [],
+    "disabled": []
+  },
+  "shell": null,
+  "instructions": null,
+  "username": null,
+  "agent": {},
+  "mcp": {},
+  "plugin": {}
+}
