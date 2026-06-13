@@ -2174,7 +2174,7 @@ impl TuiApp {
         let panel = Block::default()
             .borders(Borders::RIGHT)
             .border_style(Style::default().fg(t.border))
-            .style(Style::default().bg(t.bg));
+            .style(Style::default().bg(t.background_panel));
         f.render_widget(panel, inner_area);
 
         let content_area = Rect {
@@ -2185,7 +2185,7 @@ impl TuiApp {
         };
 
         let section_style = Style::default().fg(t.text).add_modifier(Modifier::BOLD);
-        let muted = Style::default().fg(t.dim);
+        let muted = Style::default().fg(t.text_muted);
         let green = Style::default().fg(t.success);
         let red = Style::default().fg(t.error);
         let yellow = Style::default().fg(t.warning);
@@ -2329,7 +2329,7 @@ impl TuiApp {
         // ── Footer spacer ───────────────────────────────────
         lines.push(Line::from(""));
 
-        let paragraph = Paragraph::new(lines).style(Style::default().bg(t.bg));
+        let paragraph = Paragraph::new(lines).style(Style::default().bg(t.background_panel));
         f.render_widget(paragraph, content_area);
     }
 
@@ -2406,25 +2406,28 @@ impl TuiApp {
         );
         let right = Span::styled(
             format!(" {}:{} | {} ", self.theme_name, self.prompt_count, status),
-            Style::default().fg(if self.streaming { t.success } else { t.dim }),
+            Style::default().fg(if self.streaming { t.success } else { t.text_muted }),
         );
-        let mut spans = vec![left, Span::raw(" │ "), right];
+        let mut spans = vec![left, Span::styled(" │ ", Style::default().fg(t.border)), right];
         if self.plan_mode {
-            spans.push(Span::raw(" │ "));
+            spans.push(Span::styled(" │ ", Style::default().fg(t.border)));
             spans.push(mode_tag);
         }
         if self.leader_mode {
-            spans.push(Span::raw(" │ "));
+            spans.push(Span::styled(" │ ", Style::default().fg(t.border)));
             spans.push(Span::styled(
                 " LEADER ",
                 Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
             ));
         }
         let line = Line::from(spans);
-        let block = Block::default().borders(Borders::TOP);
+        let block = Block::default()
+            .borders(Borders::TOP)
+            .border_style(Style::default().fg(t.border))
+            .style(Style::default().bg(t.background_element));
         let inner = block.inner(area);
         f.render_widget(block, area);
-        f.render_widget(ratatui::widgets::Paragraph::new(line), inner);
+        f.render_widget(ratatui::widgets::Paragraph::new(line).style(Style::default().bg(t.background_element)), inner);
     }
 
     fn render_messages(&self, f: &mut Frame, area: Rect) {
@@ -2487,7 +2490,8 @@ impl TuiApp {
             .collect();
 
         let messages = List::new(items)
-            .block(Block::default().borders(Borders::TOP).title(" Chat "));
+            .block(Block::default().borders(Borders::TOP).title(" Chat ").border_style(Style::default().fg(t.border)))
+            .style(Style::default().bg(t.background_panel));
 
         f.render_widget(messages, area);
     }
@@ -2607,9 +2611,10 @@ impl TuiApp {
                 hint
             )
         };
+        let border_color = if self.leader_mode { t.border_active } else { t.border };
         let input = Paragraph::new(self.input.as_str())
-            .style(Style::default().fg(t.text))
-            .block(Block::default().borders(Borders::ALL).title(title))
+            .style(Style::default().fg(t.text).bg(t.background_element))
+            .block(Block::default().borders(Borders::ALL).title(title).border_style(Style::default().fg(border_color)).style(Style::default().bg(t.background_element)))
             .wrap(Wrap { trim: true });
 
         f.render_widget(input, area);

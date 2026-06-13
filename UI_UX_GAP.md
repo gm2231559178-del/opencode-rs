@@ -14,15 +14,20 @@
 
 ## P1 — High (TUI usability)
 
-- `[x]` **Status bar** — Bottom bar showing model name, prompt count, and idle/streaming state.
+- `[~]` **Status bar** — Bottom bar with model badge, streaming indicator, plan/leader mode tags, proper background_element coloring.
 - `[x]` **Tool execution details** — Tool calls shown as `tool>` (yellow dim) and results as `result>` (dark gray dim) entries with arg previews.
 - `[x]` **Input history** — Up/Down navigates previous prompts (`Vec<String>` with index tracking).
+- `[~]` **Theme colors** — Expanded to 20 tokens matching original visual language (background_panel, background_element, border_active, text_muted).
 - `[x]` **Slash commands** — `/help`, `/new`, `/models`, `/sessions`, `/undo`, `/exit`, `/plan`, `/compact`, `/theme`, `/diff`, `/agent`, `/share`, `/share import`, `/share list`, `/stats`, `/mcp`, `/plugin`, `/diagnostics`, `/notify`, `/session load`, `/session fork`, `/session rename`, `/session delete` all implemented.
 - `[~]` **Multi-line input** — Enter submits, Esc clears. Shift+Enter newline not yet implemented.
 - `[ ]` **Copy last response** — Ctrl+Y or leader+y copies last assistant message to clipboard.
 
 ## P2 — Medium (feature parity)
 
+- `[x]` **Sidebar** — 36-col toggleable left panel with 5 collapsible sections (Context, MCP, LSP, Todo, Files) using background_panel.
+- `[x]` **Command palette** — Ctrl+P/leader+k opens filterable popup with 20 categorized commands.
+- `[x]` **Text prompt dialog** — Inline text input dialog for rename/tag operations.
+- `[x]` **Session management** — Rename, delete via command palette with confirm dialogs.
 - `[x]` **Session persistence** — SQLite-backed store (`~/.config/opencode-rs/sessions.db`). Auto-saves on Done/Error. `/sessions` lists recent sessions.
 - `[x]` **Session management** — Continue (`/session load`), fork (`/session fork`), rename (`/session rename`), delete (`/session delete`) existing sessions.
 - `[x]` **Plan mode** — Read-only agent preset: `edit=deny`, `bash=ask`, `write=deny`, `apply_patch=deny`. Toggle from input (/plan).
