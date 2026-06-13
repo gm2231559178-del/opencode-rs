@@ -68,6 +68,8 @@ pub struct Config {
     #[serde(default)]
     pub agent: HashMap<String, AgentConfig>,
     #[serde(default)]
+    pub references: HashMap<String, crate::reference::ReferenceEntry>,
+    #[serde(default)]
     pub mcp: HashMap<String, McpServerConfig>,
     #[serde(default)]
     pub plugin: HashMap<String, PluginConfig>,
@@ -223,6 +225,13 @@ fn merge_config(base: Config, overlay: Config) -> Config {
         plugin: {
             let mut merged = base.plugin;
             for (key, val) in overlay.plugin {
+                merged.insert(key, val);
+            }
+            merged
+        },
+        references: {
+            let mut merged = base.references;
+            for (key, val) in overlay.references {
                 merged.insert(key, val);
             }
             merged

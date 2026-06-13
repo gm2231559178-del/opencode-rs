@@ -27,9 +27,14 @@
 - `[x]` **Session management** — Continue (`/session load`), fork (`/session fork`), rename (`/session rename`), delete (`/session delete`) existing sessions.
 - `[x]` **Plan mode** — Read-only agent preset: `edit=deny`, `bash=ask`, `write=deny`, `apply_patch=deny`. Toggle from input (/plan).
 - `[x]` **Diff view** — Inline display of additions/removals for file edits (`/diff`).
-- `[ ]` **Model/agent picker** — Dialog to switch model or agent mid-session (leader+m / leader+a).
+- `[~]` **Model/agent/theme picker dialogs** — Leader m/a/t opens selection dialogs with search, ↑/↓, Enter select.
+- `[~]` **Session list dialog** — Leader s opens saved sessions list with search and load.
+- `[~]` **MCP status dialog** — Leader c shows MCP tools connected with searchable list.
+- `[~]` **Stash/prompt dialog** — Leader p shows quick-access stashed commands.
+- `[~]` **Status overview dialog** — Leader ? shows session status (model, theme, plan mode, notifications, stats).
+- `[~]` **Help dialog** — Leader h shows keybindings summary.
 - `[ ]` **Context compaction** — Auto-trigger when approaching token limit. Manual via `/compact`.
-- `[ ]` **File autocomplete** — `@` triggers fuzzy file search within the project.
+- `[~]` **File autocomplete** — `@` triggers fuzzy file search within the project + reference names.
 - `[ ]` **Subagents** — `@general`, `@explore`, `@scout` mention from input to delegate tasks.
 
 ## P3 — Low (infrastructure)

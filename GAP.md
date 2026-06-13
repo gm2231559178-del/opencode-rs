@@ -29,9 +29,9 @@ Real feature gaps between the Rust reimplementation and the original [opencode](
 |-----|--------|-------------------|-------|
 | Sidebar plugins (files, MCP, LSP, todos, context) | `[ ]` | `packages/tui/src/feature-plugins/sidebar/` | 5 sidebar panels with live status |
 | Command palette | `[~]` | `packages/tui/src/component/command-palette.tsx` | `/` slash-command autocomplete (Tab/Enter to select) |
-| Leader key system | `[x]` | `packages/tui/src/keymap.tsx` | Space leader key shows menu; f/s/%/t/n/d/m/a/h/q actions |
-| 30+ dialogs | `[ ]` | `packages/tui/src/component/dialog-*.tsx` | Agent, model, MCP, workspace, session, tag, skill, theme, stash, provider, console, export, etc. |
-| Autocomplete (`@` file, `#L` lines, frecency) | `[~]` | `packages/tui/src/component/prompt/autocomplete.tsx` | `@` triggers fd, dir/ indicator, #L range support |
+| Leader key system | `[x]` | `packages/tui/src/keymap.tsx` | Space leader key shows menu; f/s/m/a/t/h/p/c/%/n/d/e/q/? actions |
+| Dialogs (agent, model, theme, session, MCP, stash, skill, status, help) | `[~]` | `packages/tui/src/component/dialog-*.tsx` | Agent, model, theme, session list, MCP status, stash, skill, status overview, help, alert, confirm dialogs |
+| Autocomplete (`@` file, `#L` lines, frecency, references) | `[~]` | `packages/tui/src/component/prompt/autocomplete.tsx` | `@` triggers fd + directory indicator + reference candidates |
 | Thinking/reasoning display | `[x]` | `packages/tui/src/context/thinking.ts` | Collapsible reasoning blocks, Ctrl+R toggle |
 | Diff viewer (side-by-side/stacked) | `[x]` | `packages/tui/src/feature-plugins/system/diff-viewer.tsx` | Scrollable overlay with +/- colors, arrow/PgUp/PgDn/Home/End |
 | Audio/sound system | `[ ]` | `packages/tui/src/audio.ts` | Events: question, permission, error, done |
@@ -66,7 +66,7 @@ Real feature gaps between the Rust reimplementation and the original [opencode](
 | Control plane | `[ ]` | `packages/core/src/control-plane/` | Workspace CRUD, session movement |
 | Account/auth system | `[ ]` | `packages/core/src/account/` | Device code flow, auth tokens |
 | Credential system (encrypted) | `[ ]` | `packages/core/src/credential/` | Encrypted API key storage |
-| Reference system | `[ ]` | `packages/core/src/config/reference.ts` | External dir/git repo references |
+| Reference system | `[~]` | `packages/core/src/config/reference.ts` | External dir/git repo references via config with `@name` autocomplete |
 | Instruction context (AGENTS.md) | `[x]` | `packages/core/src/instruction-context.ts` | Auto-discovered from cwd/AGENTS.md or .opencode/AGENTS.md, appended to system prompt |
 | File watcher config | `[ ]` | `packages/core/src/config/watcher.ts` | Watcher ignore patterns |
 | Formatter integration | `[ ]` | `packages/core/src/config/formatter.ts` | Post-write formatting |

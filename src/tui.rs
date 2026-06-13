@@ -10,7 +10,7 @@ use crossterm::ExecutableCommand;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, List, ListItem, Paragraph, Wrap};
+use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 use ratatui::Frame;
 use std::io;
 use std::path::Path;
@@ -19,6 +19,41 @@ use std::sync::Arc;
 use std::sync::mpsc as std_mpsc;
 use std::time::Duration;
 use tokio::sync::{mpsc, Mutex};
+
+// ── Dialog types ──────────────────────────────────────────
+
+#[derive(Clone, Debug)]
+pub struct SelectOption {
+    pub title: String,
+    pub description: Option<String>,
+    pub category: Option<String>,
+    pub value: String,
+}
+
+#[derive(Clone)]
+#[allow(dead_code)]
+pub enum ActiveDialog {
+    Agent { options: Vec<SelectOption>, selected: usize, filter: String },
+    Model { options: Vec<SelectOption>, selected: usize, filter: String },
+    Theme { options: Vec<SelectOption>, selected: usize, filter: String },
+    SessionList { options: Vec<SelectOption>, selected: usize, filter: String },
+    MCPStatus { options: Vec<SelectOption>, selected: usize, filter: String },
+    Stash { options: Vec<SelectOption>, selected: usize, filter: String },
+    Skill { options: Vec<SelectOption>, selected: usize, filter: String },
+    Status { options: Vec<SelectOption>, selected: usize, filter: String },
+    Help,
+    Alert { title: String, message: String },
+    Confirm { title: String, message: String, action: String },
+}
+
+enum EnterAction {
+    Agent(String),
+    Model(String),
+    Theme(String),
+    SessionLoad(String),
+    StashInsert(String),
+    SkillInsert(String),
+}
 
 pub struct TuiApp {
     pub session: Arc<Mutex<Session>>,
@@ -52,6 +87,9 @@ pub struct TuiApp {
     pub leader_mode: bool,
     pub file_watcher_rx: Option<std_mpsc::Receiver<String>>,
     pub diff_viewer: Option<(Vec<String>, usize)>,  // (lines, scroll_offset)
+    pub dialog: Option<ActiveDialog>,
+    pub dialog_stack: Vec<ActiveDialog>,
+    pub references: Vec<crate::reference::ReferenceInfo>,
 }
 
 #[derive(Clone)]
@@ -73,6 +111,14 @@ const SLASH_COMMANDS: &[&str] = &[
 impl TuiApp {
     pub fn new(session: Session, store: Option<SessionStore>) -> Self {
         let model_name = session.model.clone();
+        let home = dirs::home_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let references = crate::reference::load_references(
+            &session.config.references,
+            &session.cwd,
+            &home,
+        );
         Self {
             session: Arc::new(Mutex::new(session)),
             messages: Vec::new(),
@@ -105,6 +151,9 @@ impl TuiApp {
             leader_mode: false,
             file_watcher_rx: None,
             diff_viewer: None,
+            dialog: None,
+            dialog_stack: Vec::new(),
+            references,
         }
     }
 
@@ -153,7 +202,7 @@ impl TuiApp {
     }
 
     fn start_file_watcher(&mut self, watch_dir: &str) {
-        use notify::{Config, Event, EventKind, RecursiveMode, Watcher};
+        use notify::{Config, Event, RecursiveMode, Watcher};
         let (tx, rx) = std_mpsc::channel();
         let dir = watch_dir.to_string();
         std::thread::spawn(move || {
@@ -339,6 +388,427 @@ impl TuiApp {
             self.streaming = false;
             self.stream_rx = None;
             self.save_session();
+        }
+    }
+
+    // ── Dialog helpers ──────────────────────────────────────
+
+    fn push_dialog(&mut self, dialog: ActiveDialog) {
+        if self.dialog.is_some() {
+            if let Some(old) = self.dialog.take() {
+                self.dialog_stack.push(old);
+            }
+        }
+        self.dialog = Some(dialog);
+    }
+
+    fn pop_dialog(&mut self) {
+        self.dialog = self.dialog_stack.pop();
+    }
+
+    fn show_help_dialog(&mut self) {
+        self.push_dialog(ActiveDialog::Help);
+    }
+
+    #[allow(dead_code)]
+    fn show_alert(&mut self, title: String, message: String) {
+        self.push_dialog(ActiveDialog::Alert { title, message });
+    }
+
+    fn show_confirm(&mut self, title: String, message: String, action: String) {
+        self.push_dialog(ActiveDialog::Confirm { title, message, action });
+    }
+
+    fn build_agent_options(&self) -> Vec<SelectOption> {
+        let mut options = Vec::new();
+        if let Ok(session) = self.session.try_lock() {
+            for (name, _) in &session.config.agent {
+                options.push(SelectOption {
+                    title: name.clone(),
+                    description: Some("configured agent".to_string()),
+                    category: Some("Agents".to_string()),
+                    value: name.clone(),
+                });
+            }
+        }
+        if options.is_empty() {
+            options.push(SelectOption {
+                title: "No agents configured".to_string(),
+                description: Some("Use /agent <name> to create one".to_string()),
+                category: None,
+                value: String::new(),
+            });
+        }
+        options
+    }
+
+    fn build_theme_options(&self) -> Vec<SelectOption> {
+        let names = ["default", "tokyonight", "catppuccin", "gruvbox", "dracula", "nord", "onedark"];
+        names.iter().map(|name| SelectOption {
+            title: name.to_string(),
+            description: if *name == self.theme_name { Some("current".to_string()) } else { None },
+            category: Some("Themes".to_string()),
+            value: name.to_string(),
+        }).collect()
+    }
+
+    fn build_model_options(&self) -> Vec<SelectOption> {
+        let current_model = self.model_name.clone();
+        let models = vec![
+            "openai/gpt-4o", "openai/gpt-4o-mini", "openai/o1", "openai/o3-mini",
+            "anthropic/claude-sonnet-4-20250514", "anthropic/claude-3-5-haiku-latest",
+            "openrouter/anthropic/claude-sonnet-4", "openrouter/openai/gpt-4o",
+            "groq/llama-3.3-70b-versatile", "groq/deepseek-r1-distill-llama-70b",
+            "opencode/default",
+        ];
+        models.iter().map(|m| SelectOption {
+            title: m.to_string(),
+            description: if *m == current_model { Some("current".to_string()) } else { None },
+            category: Some(m.split('/').next().unwrap_or("other").to_string()),
+            value: m.to_string(),
+        }).collect()
+    }
+
+    fn build_session_options(&self) -> Vec<SelectOption> {
+        let mut options = Vec::new();
+        if let Some(store) = &self.store {
+            if let Ok(sessions) = store.list_sessions(50) {
+                for s in &sessions {
+                    let preview = if s.id.len() > 8 { &s.id[..8] } else { &s.id };
+                    options.push(SelectOption {
+                        title: format!("{} | {} | {} msgs", preview, s.model, s.message_count),
+                        description: Some(format!("Updated: {}", s.updated_at)),
+                        category: Some("Sessions".to_string()),
+                        value: s.id.clone(),
+                    });
+                }
+            }
+        }
+        if options.is_empty() {
+            options.push(SelectOption {
+                title: "No saved sessions".to_string(),
+                description: None,
+                category: None,
+                value: String::new(),
+            });
+        }
+        options
+    }
+
+    fn build_mcp_options(&self) -> Vec<SelectOption> {
+        let mut options = Vec::new();
+        if let Ok(session) = self.session.try_lock() {
+            let tool_count = session.tools.len();
+            let mcp_tools: Vec<&str> = session.tools.iter()
+                .filter(|t| t.name().starts_with("mcp_"))
+                .map(|t| t.name())
+                .collect();
+            if mcp_tools.is_empty() {
+                options.push(SelectOption {
+                    title: "No MCP tools connected".to_string(),
+                    description: Some("Configure MCP servers in opencode.jsonc".to_string()),
+                    category: None,
+                    value: String::new(),
+                });
+            } else {
+                options.push(SelectOption {
+                    title: format!("{} total tools ({} MCP)", tool_count, mcp_tools.len()),
+                    description: None,
+                    category: Some("MCP Tools".to_string()),
+                    value: "summary".to_string(),
+                });
+                for t in mcp_tools {
+                    options.push(SelectOption {
+                        title: t.to_string(),
+                        description: None,
+                        category: None,
+                        value: t.to_string(),
+                    });
+                }
+            }
+        }
+        options
+    }
+
+    fn build_stash_options(&self) -> Vec<SelectOption> {
+        // Stash provides quick-access saved prompts
+        let stashed = vec![
+            ("help", "List available commands"),
+            ("plan", "Toggle plan mode"),
+            ("compact", "Compact conversation"),
+            ("stats", "Show usage statistics"),
+            ("diagnostics", "Run diagnostics on current file"),
+        ];
+        stashed.iter().map(|(name, desc)| SelectOption {
+            title: name.to_string(),
+            description: Some(desc.to_string()),
+            category: Some("Stashed prompts".to_string()),
+            value: format!("/{}", name),
+        }).collect()
+    }
+
+    #[allow(dead_code)]
+    fn build_skill_options(&self) -> Vec<SelectOption> {
+        let mut options = Vec::new();
+        if let Ok(session) = self.session.try_lock() {
+            for (name, _) in &session.config.agent {
+                options.push(SelectOption {
+                    title: name.clone(),
+                    description: Some("available skill".to_string()),
+                    category: Some("Skills".to_string()),
+                    value: name.clone(),
+                });
+            }
+        }
+        if options.is_empty() {
+            options.push(SelectOption {
+                title: "No skills configured".to_string(),
+                description: None,
+                category: None,
+                value: String::new(),
+            });
+        }
+        options
+    }
+
+    fn build_status_options(&self) -> Vec<SelectOption> {
+        let mut options = Vec::new();
+        options.push(SelectOption {
+            title: format!("Model: {}", self.model_name),
+            description: None,
+            category: Some("Session".to_string()),
+            value: "model".to_string(),
+        });
+        options.push(SelectOption {
+            title: format!("Theme: {}", self.theme_name),
+            description: None,
+            category: None,
+            value: "theme".to_string(),
+        });
+        options.push(SelectOption {
+            title: format!("Plan mode: {}", if self.plan_mode { "ON" } else { "OFF" }),
+            description: None,
+            category: None,
+            value: "plan".to_string(),
+        });
+        options.push(SelectOption {
+            title: format!("Notifications: {}", if self.notify { "ON" } else { "OFF" }),
+            description: None,
+            category: None,
+            value: "notify".to_string(),
+        });
+        if let Ok(session) = self.session.try_lock() {
+            let s = &session.stats;
+            options.push(SelectOption {
+                title: format!("Prompts: {} | Tokens: {}", s.prompt_count, s.total_tokens),
+                description: None,
+                category: Some("Stats".to_string()),
+                value: "stats".to_string(),
+            });
+        }
+        options
+    }
+
+    fn filter_options(options: &[SelectOption], filter: &str) -> Vec<SelectOption> {
+        if filter.is_empty() {
+            return options.to_vec();
+        }
+        let lower = filter.to_lowercase();
+        options.iter()
+            .filter(|o| o.title.to_lowercase().contains(&lower) || o.description.as_deref().unwrap_or("").to_lowercase().contains(&lower))
+            .cloned()
+            .collect()
+    }
+
+    fn handle_dialog_key(&mut self, key: crossterm::event::KeyEvent) -> Result<bool> {
+        if self.dialog.is_none() {
+            return Ok(false);
+        }
+
+        use ActiveDialog::*;
+        match key.code {
+            KeyCode::Esc => {
+                match self.dialog.as_ref().unwrap() {
+                    Help | Alert { .. } | Agent { .. } | Model { .. } | Theme { .. }
+                    | SessionList { .. } | MCPStatus { .. } | Stash { .. } | Skill { .. }
+                    | Status { .. } | Confirm { .. } => {
+                        self.pop_dialog();
+                    }
+                }
+                Ok(true)
+            }
+            KeyCode::Enter => {
+                let action = match self.dialog.as_ref().unwrap() {
+                    Help | Alert { .. } => {
+                        self.pop_dialog();
+                        None
+                    }
+                    Confirm { .. } => {
+                        self.pop_dialog();
+                        None
+                    }
+                    Agent { options, selected, filter } => {
+                        let filtered = Self::filter_options(options, filter);
+                        if *selected < filtered.len() && !filtered[*selected].value.is_empty() {
+                            Some(EnterAction::Agent(filtered[*selected].value.clone()))
+                        } else {
+                            None
+                        }
+                    }
+                    Model { options, selected, filter } => {
+                        let filtered = Self::filter_options(options, filter);
+                        if *selected < filtered.len() && !filtered[*selected].value.is_empty() {
+                            Some(EnterAction::Model(filtered[*selected].value.clone()))
+                        } else {
+                            None
+                        }
+                    }
+                    Theme { options, selected, filter } => {
+                        let filtered = Self::filter_options(options, filter);
+                        if *selected < filtered.len() && !filtered[*selected].value.is_empty() {
+                            Some(EnterAction::Theme(filtered[*selected].value.clone()))
+                        } else {
+                            None
+                        }
+                    }
+                    SessionList { options, selected, filter } => {
+                        let filtered = Self::filter_options(options, filter);
+                        if *selected < filtered.len() && !filtered[*selected].value.is_empty() {
+                            Some(EnterAction::SessionLoad(filtered[*selected].value.clone()))
+                        } else {
+                            None
+                        }
+                    }
+                    Stash { options, selected, filter } => {
+                        let filtered = Self::filter_options(options, filter);
+                        if *selected < filtered.len() && !filtered[*selected].value.is_empty() {
+                            Some(EnterAction::StashInsert(filtered[*selected].value.clone()))
+                        } else {
+                            None
+                        }
+                    }
+                    Skill { options, selected, filter } => {
+                        let filtered = Self::filter_options(options, filter);
+                        if *selected < filtered.len() && !filtered[*selected].value.is_empty() {
+                            Some(EnterAction::SkillInsert(filtered[*selected].value.clone()))
+                        } else {
+                            None
+                        }
+                    }
+                    MCPStatus { .. } | Status { .. } => None,
+                };
+                if let Some(action) = action {
+                    self.execute_dialog_action(action);
+                    self.dialog = None;
+                }
+                Ok(true)
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                self.dialog_select_move(-1);
+                Ok(true)
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                self.dialog_select_move(1);
+                Ok(true)
+            }
+            KeyCode::Char(c) => {
+                self.dialog_select_filter_push(c);
+                Ok(true)
+            }
+            KeyCode::Backspace => {
+                self.dialog_select_filter_pop();
+                Ok(true)
+            }
+            _ => Ok(true),
+        }
+    }
+
+    fn execute_dialog_action(&mut self, action: EnterAction) {
+        match action {
+            EnterAction::Agent(name) => { self.cmd_set_agent(name); }
+            EnterAction::Model(name) => { self.cmd_set_model(name); }
+            EnterAction::Theme(name) => {
+                self.theme = crate::theme::Theme::by_name(&name);
+                self.theme_name = name;
+            }
+            EnterAction::SessionLoad(id) => { self.cmd_load_session(&id); }
+            EnterAction::StashInsert(cmd) => {
+                self.input = cmd;
+                self.cursor = self.input.len();
+            }
+            EnterAction::SkillInsert(name) => {
+                self.input = format!("/skill {}", name);
+                self.cursor = self.input.len();
+            }
+        }
+    }
+
+    fn dialog_select_move(&mut self, delta: isize) {
+        let dialog = match self.dialog.as_mut() {
+            Some(d) => d,
+            None => return,
+        };
+        use ActiveDialog::*;
+        match dialog {
+            Agent { options, selected, filter }
+            | Model { options, selected, filter }
+            | Theme { options, selected, filter }
+            | SessionList { options, selected, filter }
+            | MCPStatus { options, selected, filter }
+            | Stash { options, selected, filter }
+            | Skill { options, selected, filter }
+            | Status { options, selected, filter } => {
+                let filtered = Self::filter_options(options, filter);
+                let len = filtered.len();
+                if len == 0 { return; }
+                let new_idx = (*selected as isize + delta).rem_euclid(len as isize) as usize;
+                *selected = new_idx;
+            }
+            _ => {}
+        }
+    }
+
+    fn dialog_select_filter_push(&mut self, c: char) {
+        let dialog = match self.dialog.as_mut() {
+            Some(d) => d,
+            None => return,
+        };
+        use ActiveDialog::*;
+        match dialog {
+            Agent { filter, selected, .. }
+            | Model { filter, selected, .. }
+            | Theme { filter, selected, .. }
+            | SessionList { filter, selected, .. }
+            | MCPStatus { filter, selected, .. }
+            | Stash { filter, selected, .. }
+            | Skill { filter, selected, .. }
+            | Status { filter, selected, .. } => {
+                filter.push(c);
+                *selected = 0;
+            }
+            _ => {}
+        }
+    }
+
+    fn dialog_select_filter_pop(&mut self) {
+        let dialog = match self.dialog.as_mut() {
+            Some(d) => d,
+            None => return,
+        };
+        use ActiveDialog::*;
+        match dialog {
+            Agent { filter, selected, .. }
+            | Model { filter, selected, .. }
+            | Theme { filter, selected, .. }
+            | SessionList { filter, selected, .. }
+            | MCPStatus { filter, selected, .. }
+            | Stash { filter, selected, .. }
+            | Skill { filter, selected, .. }
+            | Status { filter, selected, .. } => {
+                filter.pop();
+                *selected = 0;
+            }
+            _ => {}
         }
     }
 
@@ -826,12 +1296,15 @@ impl TuiApp {
             }
         }
 
-        // @ file autocomplete
+        // @ file & reference autocomplete
         let at_pos = before_cursor.rfind('@');
         match at_pos {
             Some(pos) => {
                 let query = before_cursor[pos + 1..].to_string();
                 let file_query = query.split('#').next().unwrap_or(&query).to_string();
+
+                // File candidates via fd
+                let mut candidates: Vec<String> = Vec::new();
                 let pattern = if file_query.is_empty() {
                     "*".to_string()
                 } else {
@@ -843,24 +1316,34 @@ impl TuiApp {
                     cmd.current_dir(&session.cwd);
                 }
                 let output = cmd.output().ok();
-                let mut candidates: Vec<String> = output
+                let mut file_candidates: Vec<String> = output
                     .and_then(|o| String::from_utf8(o.stdout).ok())
                     .map(|s| s.lines().map(|l| l.to_string()).collect())
                     .unwrap_or_default();
                 if !file_query.is_empty() {
-                    candidates.sort_by_key(|c| {
+                    file_candidates.sort_by_key(|c| {
                         let lower_c = c.to_lowercase();
                         let lower_q = file_query.to_lowercase();
                         lower_c.find(&lower_q).unwrap_or(usize::MAX)
                     });
                 }
-                // Add line range info to candidates
-                for c in &mut candidates {
+                for c in &mut file_candidates {
                     let path = std::path::Path::new(c);
                     if path.is_dir() {
                         c.push('/');
                     }
                 }
+
+                // Reference candidates
+                let ref_candidates: Vec<String> = self.references.iter()
+                    .filter(|r| r.name.to_lowercase().contains(&file_query.to_lowercase()))
+                    .map(|r| format!("ref:{}", r.name))
+                    .collect();
+
+                // Combine: files first, then references
+                candidates.extend(file_candidates);
+                candidates.extend(ref_candidates);
+
                 self.autocomplete_candidates = candidates;
                 self.autocomplete_idx = if self.autocomplete_candidates.is_empty() {
                     -1
@@ -900,10 +1383,18 @@ impl TuiApp {
             } else {
                 String::new()
             };
-            let replacement = if suffix.is_empty() {
-                format!("{} ", selected)
+
+            // Determine the display name (strip ref: prefix for references)
+            let display_name = if let Some(ref_name) = selected.strip_prefix("ref:") {
+                ref_name.to_string()
             } else {
-                format!("{}", selected)
+                selected.clone()
+            };
+
+            let replacement = if suffix.is_empty() {
+                format!("{} ", display_name)
+            } else {
+                display_name
             };
             let new_input = format!("{}{}{}", &self.input[..at_pos], replacement, after_cursor);
             let new_cursor = at_pos + replacement.len();
@@ -916,6 +1407,12 @@ impl TuiApp {
     }
 
     async fn handle_key(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
+        // Dialog mode handles all keys when active
+        if self.dialog.is_some() {
+            self.handle_dialog_key(key)?;
+            return Ok(());
+        }
+
         // Diff viewer mode handles all keys when active
         if self.diff_viewer.is_some() {
             let lines_len = self.diff_viewer.as_ref().map(|v| v.0.len()).unwrap_or(0);
@@ -952,30 +1449,82 @@ impl TuiApp {
         // Leader mode: handle the action key
         if self.leader_mode {
             self.leader_mode = false;
-            let action = match key.code {
-                KeyCode::Char('f') => Some("/diagnostics "),
-                KeyCode::Char('s') => Some("/sessions"),
-                KeyCode::Char('/') => Some("/plan"),
-                KeyCode::Char('t') => Some("/theme"),
-                KeyCode::Char('n') => Some("/new"),
-                KeyCode::Char('h') => Some("/help"),
-                KeyCode::Char('d') => Some("/diff"),
+            match key.code {
+                KeyCode::Char('f') => {
+                    self.input = "/diagnostics ".to_string();
+                    self.cursor = self.input.len();
+                }
+                KeyCode::Char('s') => {
+                    self.push_dialog(ActiveDialog::SessionList {
+                        options: self.build_session_options(),
+                        selected: 0,
+                        filter: String::new(),
+                    });
+                }
+                KeyCode::Char('m') => {
+                    self.push_dialog(ActiveDialog::Model {
+                        options: self.build_model_options(),
+                        selected: 0,
+                        filter: String::new(),
+                    });
+                }
+                KeyCode::Char('a') => {
+                    self.push_dialog(ActiveDialog::Agent {
+                        options: self.build_agent_options(),
+                        selected: 0,
+                        filter: String::new(),
+                    });
+                }
+                KeyCode::Char('t') => {
+                    self.push_dialog(ActiveDialog::Theme {
+                        options: self.build_theme_options(),
+                        selected: 0,
+                        filter: String::new(),
+                    });
+                }
+                KeyCode::Char('h') => {
+                    self.show_help_dialog();
+                }
+                KeyCode::Char('p') => {
+                    self.push_dialog(ActiveDialog::Stash {
+                        options: self.build_stash_options(),
+                        selected: 0,
+                        filter: String::new(),
+                    });
+                }
+                KeyCode::Char('c') => {
+                    self.push_dialog(ActiveDialog::MCPStatus {
+                        options: self.build_mcp_options(),
+                        selected: 0,
+                        filter: String::new(),
+                    });
+                }
+                KeyCode::Char('/') => {
+                    self.input = "/plan".to_string();
+                    self.cursor = self.input.len();
+                    self.handle_slash("/plan").await;
+                }
+                KeyCode::Char('n') => {
+                    self.show_confirm("New Session".to_string(), "Clear current session?".to_string(), "clear".to_string());
+                }
+                KeyCode::Char('d') => {
+                    self.input = "/diff".to_string();
+                    self.cursor = self.input.len();
+                    self.handle_slash("/diff").await;
+                }
                 KeyCode::Char('e') => {
                     self.open_last_edited_file();
-                    None
                 }
-                KeyCode::Char('q') => { self.quit = true; None }
-                KeyCode::Char('m') => Some("/model "),
-                KeyCode::Char('a') => Some("/agent "),
-                KeyCode::Esc => None,
-                _ => { self.show_toast("Unknown leader key".to_string()); None }
-            };
-            if let Some(cmd) = action {
-                self.input = cmd.to_string();
-                self.cursor = self.input.len();
-                if !cmd.ends_with(' ') {
-                    self.handle_slash(cmd).await;
+                KeyCode::Char('q') => { self.quit = true; }
+                KeyCode::Char('?') => {
+                    self.push_dialog(ActiveDialog::Status {
+                        options: self.build_status_options(),
+                        selected: 0,
+                        filter: String::new(),
+                    });
                 }
+                KeyCode::Esc => {}
+                _ => { self.show_toast("Unknown leader key".to_string()); }
             }
             return Ok(());
         }
@@ -1221,9 +1770,14 @@ impl TuiApp {
             }
         }
 
-        // Render diff viewer overlay on top of everything
+        // Render diff viewer overlay
         if self.diff_viewer.is_some() {
             self.render_diff_viewer(f);
+        }
+
+        // Render dialog overlay on top of everything
+        if self.dialog.is_some() {
+            self.render_dialog(f);
         }
     }
 
@@ -1471,7 +2025,7 @@ impl TuiApp {
         let title = if self.pending_perm.is_some() {
             " Approve? (y=allow / n=deny) ".to_string()
         } else if self.leader_mode {
-            " Leader: (f)iles (s)essions (/)plan (t)heme (n)ew (d)iff (e)dit (m)odel (a)gent (h)elp (q)uit ".to_string()
+            " Leader: (f)iles (s)essions (m)odel (a)gent (t)heme (h)elp (p)rompt (c)MCP (/)plan (n)ew (d)iff (e)dit (q)uit (?)status ".to_string()
         } else if !self.autocomplete_candidates.is_empty() {
             let idx = self.autocomplete_idx.max(0) as usize;
             let total = self.autocomplete_candidates.len();
@@ -1510,5 +2064,206 @@ impl TuiApp {
 
         let cursor_pos = self.input.len() as u16;
         f.set_cursor_position((area.x + cursor_pos + 1, area.y + 1));
+    }
+
+    // ── Dialog rendering ────────────────────────────────────
+
+    fn render_dialog(&self, f: &mut Frame) {
+        let dialog = match &self.dialog {
+            Some(d) => d,
+            None => return,
+        };
+        let t = self.theme;
+        let area = f.area();
+
+        // Clear area for overlay effect
+        f.render_widget(Clear, area);
+
+        use ActiveDialog::*;
+        match dialog {
+            Help => self.render_help_dialog(f, t),
+            Alert { title, message } => self.render_alert_dialog(f, t, title, message),
+            Confirm { title, message, action } => self.render_confirm_dialog(f, t, title, message, action),
+            Agent { options, selected, filter } => {
+                let filtered = Self::filter_options(options, filter);
+                let filtered: Vec<&SelectOption> = filtered.iter().collect();
+                Self::render_select_dialog(f, t, &filtered, *selected, filter, "Select Agent", area);
+            }
+            Model { options, selected, filter } => {
+                let filtered = Self::filter_options(options, filter);
+                let filtered: Vec<&SelectOption> = filtered.iter().collect();
+                Self::render_select_dialog(f, t, &filtered, *selected, filter, "Select Model", area);
+            }
+            Theme { options, selected, filter } => {
+                let filtered = Self::filter_options(options, filter);
+                let filtered: Vec<&SelectOption> = filtered.iter().collect();
+                Self::render_select_dialog(f, t, &filtered, *selected, filter, "Select Theme", area);
+            }
+            SessionList { options, selected, filter } => {
+                let filtered = Self::filter_options(options, filter);
+                let filtered: Vec<&SelectOption> = filtered.iter().collect();
+                Self::render_select_dialog(f, t, &filtered, *selected, filter, "Saved Sessions", area);
+            }
+            MCPStatus { options, selected, filter } => {
+                let filtered = Self::filter_options(options, filter);
+                let filtered: Vec<&SelectOption> = filtered.iter().collect();
+                Self::render_select_dialog(f, t, &filtered, *selected, filter, "MCP Tools", area);
+            }
+            Stash { options, selected, filter } => {
+                let filtered = Self::filter_options(options, filter);
+                let filtered: Vec<&SelectOption> = filtered.iter().collect();
+                Self::render_select_dialog(f, t, &filtered, *selected, filter, "Stashed Prompts", area);
+            }
+            Skill { options, selected, filter } => {
+                let filtered = Self::filter_options(options, filter);
+                let filtered: Vec<&SelectOption> = filtered.iter().collect();
+                Self::render_select_dialog(f, t, &filtered, *selected, filter, "Select Skill", area);
+            }
+            Status { options, selected, filter } => {
+                let filtered = Self::filter_options(options, filter);
+                let filtered: Vec<&SelectOption> = filtered.iter().collect();
+                Self::render_select_dialog(f, t, &filtered, *selected, filter, "Session Status", area);
+            }
+        }
+    }
+
+    fn render_help_dialog(&self, f: &mut Frame, t: &Theme) {
+        let area = Self::dialog_area(f.area());
+        let help_text = vec![
+            "OpenCode TUI Key Bindings",
+            "",
+            "General:",
+            "  Ctrl+C / q     Quit",
+            "  Space          Leader menu (empty input)",
+            "  Esc            Cancel streaming / Close dialogs",
+            "  Ctrl+Y         Copy last response",
+            "  Ctrl+E         Open last edited file in $EDITOR",
+            "  Ctrl+R         Toggle reasoning visibility",
+            "  Ctrl+O         Toggle tool output collapse",
+            "  Tab/Shift+Tab    Navigate autocomplete",
+            "  Enter          Submit / select autocomplete",
+            "",
+            "Leader keys:",
+            "  f  Insert /diagnostics",
+            "  s  Session list (dialog)",
+            "  /  Plan mode",
+            "  t  Theme picker (dialog)",
+            "  n  New session",
+            "  h  Help dialog",
+            "  d  Diff viewer",
+            "  e  Open last edited file",
+            "  m  Model picker (dialog)",
+            "  a  Agent picker (dialog)",
+            "  q  Quit",
+            "",
+            "Dialog navigation:",
+            "  ↑/k  Previous item    ↓/j  Next item",
+            "  Enter  Select item    Esc   Close",
+            "  Type to filter results",
+            "",
+            "Press any key to close.",
+        ];
+        let text: Vec<Line> = help_text.iter().map(|line| {
+            let style = if line.starts_with("OpenCode") {
+                Style::default().fg(t.primary).add_modifier(Modifier::BOLD)
+            } else if line.ends_with(':') {
+                Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(t.text)
+            };
+            Line::from(Span::styled(*line, style))
+        }).collect();
+
+        let para = Paragraph::new(text)
+            .block(Block::default().borders(Borders::ALL).title(" Help ").border_style(Style::default().fg(t.primary)));
+        let inner = Self::centered_rect(area, 60, help_text.len() as u16 + 4);
+        f.render_widget(para, inner);
+    }
+
+    fn render_alert_dialog(&self, f: &mut Frame, t: &Theme, title: &str, message: &str) {
+        let area = Self::dialog_area(f.area());
+        let lines: usize = message.lines().count();
+        let text = Paragraph::new(message.to_string())
+            .block(Block::default().borders(Borders::ALL)
+                .title(format!(" {} ", title))
+                .border_style(Style::default().fg(t.primary)));
+        let inner = Self::centered_rect(area, 60, lines as u16 + 4);
+        f.render_widget(text, inner);
+    }
+
+    fn render_confirm_dialog(&self, f: &mut Frame, t: &Theme, title: &str, message: &str, _action: &str) {
+        let area = Self::dialog_area(f.area());
+        let lines: Vec<Line> = vec![
+            Line::from(Span::styled(message.to_string(), Style::default().fg(t.text))),
+            Line::from(""),
+            Line::from(Span::styled("  (y)es / (n)o  ", Style::default().fg(t.warning).add_modifier(Modifier::BOLD))),
+        ];
+        let para = Paragraph::new(lines)
+            .block(Block::default().borders(Borders::ALL)
+                .title(format!(" {} ", title))
+                .border_style(Style::default().fg(t.warning)));
+        let inner = Self::centered_rect(area, 50, 6);
+        f.render_widget(para, inner);
+    }
+
+    fn render_select_dialog<'a>(
+        f: &mut Frame,
+        t: &Theme,
+        options: &[&'a SelectOption],
+        selected: usize,
+        filter: &str,
+        title: &str,
+        area: Rect,
+    ) {
+        let max_visible = 20usize;
+        let scroll = if selected >= max_visible { selected - max_visible + 1 } else { 0 };
+
+        let mut lines: Vec<Line> = Vec::new();
+        // Filter indicator
+        let filter_text = if !filter.is_empty() {
+            format!(" filter: {}", filter)
+        } else {
+            " (type to filter)".to_string()
+        };
+        lines.push(Line::from(Span::styled(&filter_text, Style::default().fg(t.text_dim))));
+        lines.push(Line::from(""));
+
+        // Option items
+        for (i, opt) in options.iter().enumerate().skip(scroll).take(max_visible) {
+            let is_sel = i == selected;
+            let style = if is_sel {
+                Style::default().fg(t.bg).bg(t.primary)
+            } else {
+                Style::default().fg(t.text)
+            };
+            let prefix = if is_sel { "▸ " } else { "  " };
+            let cat = opt.category.as_deref().map(|c| format!(" [{}]", c)).unwrap_or_default();
+            let desc = opt.description.as_deref().map(|d| format!("  {}", d)).unwrap_or_default();
+            lines.push(Line::from(Span::styled(
+                format!("{}{}{}{}", prefix, opt.title, cat, desc), style,
+            )));
+        }
+
+        let height = (lines.len() as u16 + 2).min(area.height.saturating_sub(2));
+        let dialog_area = Self::centered_rect(area, 70, height);
+        let para = Paragraph::new(lines)
+            .block(Block::default().borders(Borders::ALL)
+                .title(format!(" {} ", title))
+                .border_style(Style::default().fg(t.primary)));
+        f.render_widget(para, dialog_area);
+    }
+
+    fn dialog_area(area: Rect) -> Rect {
+        let width = area.width.min(80);
+        let height = area.height.min(40);
+        let x = area.x + (area.width.saturating_sub(width)) / 2;
+        let y = area.y + (area.height.saturating_sub(height)) / 3;
+        Rect { x, y, width, height }
+    }
+
+    fn centered_rect(area: Rect, width: u16, height: u16) -> Rect {
+        let x = area.x + (area.width.saturating_sub(width)) / 2;
+        let y = area.y + (area.height.saturating_sub(height)) / 3;
+        Rect { x, y, width: width.min(area.width), height: height.min(area.height) }
     }
 }

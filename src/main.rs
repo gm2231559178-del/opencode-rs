@@ -7,6 +7,7 @@ mod lsp;
 mod mcp;
 mod mdns;
 mod plugin;
+mod reference;
 mod server;
 mod session;
 mod session_store;
