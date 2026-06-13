@@ -318,26 +318,35 @@ impl TuiApp {
                             }
                         }
                         let short = if id.len() > 8 { &id[..8] } else { &id };
-                        let args_str = serde_json::to_string_pretty(&arguments)
-                            .unwrap_or_default();
-                        self.context_tokens += args_str.len() / 4;
+                        let args_summary = crate::util::tool_display::format_tool_args(&name, &arguments);
+                        self.context_tokens += arguments.to_string().len() / 4;
                         self.context_percent = ((self.context_tokens as f64 / 100000.0) * 100.0) as u8;
-                        let preview: String = args_str.chars().take(400).collect();
                         let icon = crate::util::tool_display::tool_icon(&name);
                         let hname = crate::util::tool_display::human_name(&name);
+                        let content = if args_summary.is_empty() {
+                            format!("{} {} ({})", icon, hname, short)
+                        } else {
+                            format!("{} {} ({})\n{}", icon, hname, short, args_summary)
+                        };
                         self.messages.push(TuiMessage {
             age: 0, timestamp: chrono::Utc::now(),
                             role: "tool_call".to_string(),
-                            content: format!("{} {} ({})\n{}", icon, hname, short, preview),
+                            content,
                         });
                     }
                     StreamEvent::PermissionRequest { request_id, tool_name, args } => {
-                        let args_str = serde_json::to_string_pretty(&args).unwrap_or_default();
-                        let preview: String = args_str.chars().take(200).collect();
+                        let args_summary = crate::util::tool_display::format_tool_args(&tool_name, &args);
+                        let icon = crate::util::tool_display::tool_icon(&tool_name);
+                        let hname = crate::util::tool_display::human_name(&tool_name);
+                        let content = if args_summary.is_empty() {
+                            format!("{} {} (AWAITING APPROVAL)", icon, hname)
+                        } else {
+                            format!("{} {} (AWAITING APPROVAL)\n{}", icon, hname, args_summary)
+                        };
                         self.messages.push(TuiMessage {
             age: 0, timestamp: chrono::Utc::now(),
                             role: "tool_call".to_string(),
-                            content: format!("{} (AWAITING APPROVAL)\n{}", tool_name, preview),
+                            content,
                         });
                         self.pending_perm = Some(request_id);
                     }
@@ -2684,7 +2693,7 @@ impl TuiApp {
     }
 
     fn render_code_block(code: &str, width: usize, lang: &str, out: &mut Vec<Line>, theme: &Theme) {
-        let code_style = Style::default().fg(theme.dim).add_modifier(Modifier::DIM);
+        let _code_style = Style::default().fg(theme.dim).add_modifier(Modifier::DIM);
         let diff_add = Style::default().fg(theme.diff_add).add_modifier(Modifier::DIM);
         let diff_del = Style::default().fg(theme.diff_del).add_modifier(Modifier::DIM);
         let diff_hunk = Style::default().fg(theme.diff_hunk).add_modifier(Modifier::DIM);
