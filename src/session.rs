@@ -83,17 +83,33 @@ impl Session {
             .nth(1)
             .unwrap_or_else(|| default_model(provider_name));
 
-        let system_prompt = config
+        let mut system_prompt = config
             .instructions
             .as_ref()
             .map(|i| i.join("\n"))
             .unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT.to_string());
 
-        let mut tools = builtin_tools();
+        // Auto-discover AGENTS.md from the workspace root
         let cwd = std::env::current_dir()
             .map(|p| p.to_string_lossy().to_string())
             .unwrap_or_else(|_| "/".to_string());
+        let agents_paths = [
+            std::path::Path::new(&cwd).join("AGENTS.md"),
+            std::path::Path::new(&cwd).join(".opencode").join("AGENTS.md"),
+        ];
+        for ap in &agents_paths {
+            if ap.exists() {
+                match std::fs::read_to_string(ap) {
+                    Ok(content) if !content.trim().is_empty() => {
+                        system_prompt = format!("{}\n\n# AGENTS.md (Workspace Instructions)\n{}", system_prompt, content);
+                    }
+                    _ => {}
+                }
+                break;
+            }
+        }
 
+        let mut tools = builtin_tools();
         let mut mcp_tools = crate::mcp::connect_mcp_servers(&config.mcp).await;
         tools.append(&mut mcp_tools);
 

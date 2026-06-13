@@ -59,10 +59,10 @@ pub struct TuiMessage {
 const SLASH_COMMANDS: &[&str] = &[
     "/help", "/plan", "/compact", "/diff", "/theme", "/theme <name>",
     "/notify", "/new", "/model", "/model <name>", "/agent", "/agent <name>",
-    "/sessions", "/session load <id>", "/session fork", "/session rename <id> <name>",
-    "/session delete <id>", "/session new", "/undo", "/share", "/share list",
-    "/share import <id> <secret>", "/stats", "/mcp", "/plugin", "/diagnostics <file>",
-    "/exit",
+    "/agents", "/sessions", "/session load <id>", "/session fork",
+    "/session rename <id> <name>", "/session delete <id>", "/session new",
+    "/undo", "/share", "/share list", "/share import <id> <secret>",
+    "/stats", "/mcp", "/plugin", "/diagnostics <file>", "/exit",
 ];
 
 impl TuiApp {
@@ -193,15 +193,23 @@ impl TuiApp {
                         self.pending_perm = Some(request_id);
                     }
                     StreamEvent::ToolResult { name, output, .. } => {
-                        let preview: String = output.chars().take(300).collect();
-                        let truncated = preview.len() < output.len();
-                        let content = if truncated {
-                            format!("{} ({} bytes, showing first 300)\n{}", name, output.len(), preview)
+                        let lines: Vec<&str> = output.lines().collect();
+                        let max_lines = 100;
+                        let max_chars = 2000;
+                        let truncated_lines = lines.len() > max_lines;
+                        let shown_lines: Vec<&str> = lines.into_iter().take(max_lines).collect();
+                        let shown = shown_lines.join("\n");
+                        let truncated_chars = shown.len() > max_chars;
+                        let preview: String = shown.chars().take(max_chars).collect();
+                        let content = if truncated_lines {
+                            format!("{} ({} lines, showing first {})\n{}", name, output.len(), max_lines, preview)
+                        } else if truncated_chars {
+                            format!("{} ({} chars, showing first {})\n{}", name, output.len(), max_chars, preview)
                         } else {
-                            format!("{} ({} bytes)\n{}", name, output.len(), preview)
+                            format!("{} ({} chars)\n{}", name, output.len(), preview)
                         };
                         self.messages.push(TuiMessage {
-                            age: 0,
+            age: 0,
                             role: "tool_result".to_string(),
                             content,
                         });
@@ -484,7 +492,7 @@ impl TuiApp {
                 self.theme_name = self.theme.name.to_string();
                 format!("Switched to theme: {}", self.theme.name)
             }
-            "/help" => "Available commands:\n  /help          - Show this help\n  /plan          - Toggle plan mode (read-only)\n  /compact       - Compact conversation history\n  /diff          - Show diff of last file edit\n  /theme         - Show current theme\n  /theme <name>  - Switch theme\n  /notify        - Toggle notification bell\n  /new           - Clear session\n  /model         - Show current model\n  /model <name>  - Switch model (e.g. /model openai/gpt-4o)\n  /agent         - Show available agents\n  /agent <name>  - Switch agent\n  /sessions      - List saved sessions\n  /session load <id>  - Load a saved session\n  /session fork       - Fork current session\n  /session rename <id> <name> - Rename a session\n  /session delete <id> - Delete a session\n  /undo          - Undo last file change\n  /share         - Generate share link for this session\n  /share list    - List shared sessions\n  /share import <id> <secret> - Import a shared session\n  /stats         - Show usage statistics\n  /mcp           - Show MCP server connection status\n  /plugin        - Show plugin status\n  /diagnostics <file> - Run LSP diagnostics on a file\n  /exit          - Quit OpenCode".to_string(),
+            "/help" => "Available commands:\n  /help           - Show this help\n  /plan           - Toggle plan mode (read-only)\n  /compact        - Compact conversation history\n  /diff           - Show diff of last file edit\n  /theme          - Show current theme\n  /theme <name>   - Switch theme\n  /notify         - Toggle notification bell\n  /new            - Clear session\n  /model          - Show current model\n  /model <name>   - Switch model (e.g. /model openai/gpt-4o)\n  /agent          - Show available agents\n  /agent <name>   - Switch agent\n  /agents         - Show AGENTS.md workspace instructions\n  /sessions       - List saved sessions\n  /session load <id>   - Load a saved session\n  /session fork        - Fork current session\n  /session rename <id> <name> - Rename a session\n  /session delete <id> - Delete a session\n  /undo           - Undo last file change\n  /share          - Generate share link for this session\n  /share list     - List shared sessions\n  /share import <id> <secret> - Import a shared session\n  /stats          - Show usage statistics\n  /mcp            - Show MCP server connection status\n  /plugin         - Show plugin status\n  /diagnostics <file> - Run LSP diagnostics on a file\n  /exit           - Quit OpenCode".to_string(),
             "/new" | "/clear" => self.cmd_clear_session(),
             "/models" => self.cmd_show_model(),
             "/model" => self.cmd_show_model(),
@@ -496,6 +504,23 @@ impl TuiApp {
             cmd if cmd.starts_with("/agent ") => {
                 let name = cmd.splitn(2, ' ').nth(1).unwrap_or("").trim().to_string();
                 self.cmd_set_agent(name)
+            }
+            "/agents" => {
+                let cwd = self.session.try_lock().map(|s| s.cwd.clone()).unwrap_or_default();
+                let agents_path = std::path::Path::new(&cwd).join("AGENTS.md");
+                let agents_path2 = std::path::Path::new(&cwd).join(".opencode").join("AGENTS.md");
+                let content = if agents_path.exists() {
+                    std::fs::read_to_string(&agents_path).unwrap_or_default()
+                } else if agents_path2.exists() {
+                    std::fs::read_to_string(&agents_path2).unwrap_or_default()
+                } else {
+                    String::new()
+                };
+                if content.trim().is_empty() {
+                    "No AGENTS.md found in workspace.".to_string()
+                } else {
+                    format!("AGENTS.md:\n{}", content)
+                }
             }
             "/exit" | "/quit" | "/q" => {
                 self.quit = true;

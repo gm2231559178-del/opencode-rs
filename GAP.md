@@ -67,7 +67,7 @@ Real feature gaps between the Rust reimplementation and the original [opencode](
 | Account/auth system | `[ ]` | `packages/core/src/account/` | Device code flow, auth tokens |
 | Credential system (encrypted) | `[ ]` | `packages/core/src/credential/` | Encrypted API key storage |
 | Reference system | `[ ]` | `packages/core/src/config/reference.ts` | External dir/git repo references |
-| Instruction context (AGENTS.md) | `[ ]` | `packages/core/src/instruction-context.ts` | Auto-discovery of AGENTS.md |
+| Instruction context (AGENTS.md) | `[x]` | `packages/core/src/instruction-context.ts` | Auto-discovered from cwd/AGENTS.md or .opencode/AGENTS.md, appended to system prompt |
 | File watcher config | `[ ]` | `packages/core/src/config/watcher.ts` | Watcher ignore patterns |
 | Formatter integration | `[ ]` | `packages/core/src/config/formatter.ts` | Post-write formatting |
 | Policy system | `[ ]` | `packages/core/src/policy.ts` | Declarative allow/deny rules |
