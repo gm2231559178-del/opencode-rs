@@ -21,6 +21,14 @@ pub struct Theme {
     pub assistant_msg: Color,
     pub tool_call: Color,
     pub tool_result: Color,
+    pub diff_add: Color,
+    pub diff_del: Color,
+    pub diff_hunk: Color,
+    pub syntax_keyword: Color,
+    pub syntax_string: Color,
+    pub syntax_number: Color,
+    pub syntax_comment: Color,
+    pub syntax_builtin: Color,
 }
 
 impl Theme {
@@ -58,6 +66,14 @@ pub const DEFAULT: Theme = Theme {
     assistant_msg: Color::Green,
     tool_call: Color::Yellow,
     tool_result: Color::DarkGray,
+    diff_add: Color::Green,
+    diff_del: Color::Red,
+    diff_hunk: Color::Magenta,
+    syntax_keyword: Color::Magenta,
+    syntax_string: Color::Green,
+    syntax_number: Color::Cyan,
+    syntax_comment: Color::DarkGray,
+    syntax_builtin: Color::Blue,
 };
 
 pub const TOKYONIGHT: Theme = Theme {
@@ -81,6 +97,14 @@ pub const TOKYONIGHT: Theme = Theme {
     assistant_msg: Color::Rgb(159, 214, 114),
     tool_call: Color::Rgb(224, 175, 104),
     tool_result: Color::Rgb(86, 95, 137),
+    diff_add: Color::Rgb(159, 214, 114),
+    diff_del: Color::Rgb(224, 83, 98),
+    diff_hunk: Color::Rgb(173, 108, 244),
+    syntax_keyword: Color::Rgb(173, 108, 244),
+    syntax_string: Color::Rgb(159, 214, 114),
+    syntax_number: Color::Rgb(125, 143, 255),
+    syntax_comment: Color::Rgb(86, 95, 137),
+    syntax_builtin: Color::Rgb(86, 108, 214),
 };
 
 pub const CATPPUCCIN: Theme = Theme {
@@ -104,6 +128,14 @@ pub const CATPPUCCIN: Theme = Theme {
     assistant_msg: Color::Rgb(166, 227, 161),
     tool_call: Color::Rgb(249, 226, 175),
     tool_result: Color::Rgb(108, 112, 134),
+    diff_add: Color::Rgb(166, 227, 161),
+    diff_del: Color::Rgb(243, 139, 168),
+    diff_hunk: Color::Rgb(203, 166, 247),
+    syntax_keyword: Color::Rgb(203, 166, 247),
+    syntax_string: Color::Rgb(166, 227, 161),
+    syntax_number: Color::Rgb(137, 180, 250),
+    syntax_comment: Color::Rgb(108, 112, 134),
+    syntax_builtin: Color::Rgb(116, 155, 229),
 };
 
 pub const GRUVBOX: Theme = Theme {
@@ -127,6 +159,14 @@ pub const GRUVBOX: Theme = Theme {
     assistant_msg: Color::Rgb(184, 187, 38),
     tool_call: Color::Rgb(214, 157, 33),
     tool_result: Color::Rgb(124, 111, 100),
+    diff_add: Color::Rgb(184, 187, 38),
+    diff_del: Color::Rgb(251, 73, 52),
+    diff_hunk: Color::Rgb(211, 134, 155),
+    syntax_keyword: Color::Rgb(211, 134, 155),
+    syntax_string: Color::Rgb(184, 187, 38),
+    syntax_number: Color::Rgb(131, 165, 152),
+    syntax_comment: Color::Rgb(124, 111, 100),
+    syntax_builtin: Color::Rgb(69, 133, 136),
 };
 
 pub const DRACULA: Theme = Theme {
@@ -150,6 +190,14 @@ pub const DRACULA: Theme = Theme {
     assistant_msg: Color::Rgb(80, 250, 123),
     tool_call: Color::Rgb(255, 184, 108),
     tool_result: Color::Rgb(98, 114, 164),
+    diff_add: Color::Rgb(80, 250, 123),
+    diff_del: Color::Rgb(255, 85, 85),
+    diff_hunk: Color::Rgb(255, 121, 198),
+    syntax_keyword: Color::Rgb(255, 121, 198),
+    syntax_string: Color::Rgb(80, 250, 123),
+    syntax_number: Color::Rgb(189, 147, 249),
+    syntax_comment: Color::Rgb(98, 114, 164),
+    syntax_builtin: Color::Rgb(139, 143, 255),
 };
 
 pub const NORD: Theme = Theme {
@@ -173,6 +221,14 @@ pub const NORD: Theme = Theme {
     assistant_msg: Color::Rgb(163, 190, 140),
     tool_call: Color::Rgb(208, 135, 112),
     tool_result: Color::Rgb(76, 86, 106),
+    diff_add: Color::Rgb(163, 190, 140),
+    diff_del: Color::Rgb(191, 97, 106),
+    diff_hunk: Color::Rgb(180, 142, 173),
+    syntax_keyword: Color::Rgb(180, 142, 173),
+    syntax_string: Color::Rgb(163, 190, 140),
+    syntax_number: Color::Rgb(136, 192, 208),
+    syntax_comment: Color::Rgb(76, 86, 106),
+    syntax_builtin: Color::Rgb(129, 161, 193),
 };
 
 pub const ONEDARK: Theme = Theme {
@@ -196,4 +252,12 @@ pub const ONEDARK: Theme = Theme {
     assistant_msg: Color::Rgb(152, 195, 121),
     tool_call: Color::Rgb(229, 192, 123),
     tool_result: Color::Rgb(92, 99, 112),
+    diff_add: Color::Rgb(152, 195, 121),
+    diff_del: Color::Rgb(224, 108, 117),
+    diff_hunk: Color::Rgb(198, 120, 221),
+    syntax_keyword: Color::Rgb(198, 120, 221),
+    syntax_string: Color::Rgb(152, 195, 121),
+    syntax_number: Color::Rgb(97, 175, 239),
+    syntax_comment: Color::Rgb(92, 99, 112),
+    syntax_builtin: Color::Rgb(171, 178, 191),
 };

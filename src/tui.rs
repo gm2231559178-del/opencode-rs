@@ -2392,11 +2392,11 @@ impl TuiApp {
             .iter()
             .map(|line| {
                 let style = if line.starts_with('+') && !line.starts_with("+++") {
-                    Style::default().fg(t.success).add_modifier(Modifier::DIM)
+                    Style::default().fg(t.diff_add).add_modifier(Modifier::DIM)
                 } else if line.starts_with('-') && !line.starts_with("---") {
-                    Style::default().fg(t.error).add_modifier(Modifier::DIM)
+                    Style::default().fg(t.diff_del).add_modifier(Modifier::DIM)
                 } else if line.starts_with("@@") || line.starts_with("--- ") || line.starts_with("+++ ") {
-                    Style::default().fg(t.accent).add_modifier(Modifier::DIM)
+                    Style::default().fg(t.diff_hunk).add_modifier(Modifier::DIM)
                 } else {
                     Style::default().fg(t.text)
                 };
@@ -2583,9 +2583,9 @@ impl TuiApp {
         let fence_style = Style::default().fg(theme.border).add_modifier(Modifier::DIM);
         let lang_style = Style::default().fg(theme.tool_call);
         let text_style = Style::default().fg(theme.text);
-        let diff_add = Style::default().fg(theme.success).add_modifier(Modifier::DIM);
-        let diff_del = Style::default().fg(theme.error).add_modifier(Modifier::DIM);
-        let diff_hunk = Style::default().fg(theme.accent).add_modifier(Modifier::DIM);
+        let diff_add = Style::default().fg(theme.diff_add).add_modifier(Modifier::DIM);
+        let diff_del = Style::default().fg(theme.diff_del).add_modifier(Modifier::DIM);
+        let diff_hunk = Style::default().fg(theme.diff_hunk).add_modifier(Modifier::DIM);
 
         let mut in_code = false;
         let mut code_buf = String::new();
@@ -2638,9 +2638,9 @@ impl TuiApp {
 
     fn render_code_block(code: &str, width: usize, lang: &str, out: &mut Vec<Line>, theme: &Theme) {
         let code_style = Style::default().fg(theme.dim).add_modifier(Modifier::DIM);
-        let diff_add = Style::default().fg(theme.success).add_modifier(Modifier::DIM);
-        let diff_del = Style::default().fg(theme.error).add_modifier(Modifier::DIM);
-        let diff_hunk = Style::default().fg(theme.accent).add_modifier(Modifier::DIM);
+        let diff_add = Style::default().fg(theme.diff_add).add_modifier(Modifier::DIM);
+        let diff_del = Style::default().fg(theme.diff_del).add_modifier(Modifier::DIM);
+        let diff_hunk = Style::default().fg(theme.diff_hunk).add_modifier(Modifier::DIM);
 
         for line in code.lines() {
             if line.starts_with('+') && !line.starts_with("+++") {
@@ -2674,11 +2674,11 @@ impl TuiApp {
             return Vec::new();
         }
 
-        let kw_style = Style::default().fg(theme.accent);
-        let str_style = Style::default().fg(theme.success);
-        let comment_style = Style::default().fg(theme.text_muted);
-        let num_style = Style::default().fg(theme.primary);
-        let builtin_style = Style::default().fg(theme.secondary);
+        let kw_style = Style::default().fg(theme.syntax_keyword);
+        let str_style = Style::default().fg(theme.syntax_string);
+        let comment_style = Style::default().fg(theme.syntax_comment);
+        let num_style = Style::default().fg(theme.syntax_number);
+        let builtin_style = Style::default().fg(theme.syntax_builtin);
 
         let line = line.trim_end();
         let (comment_prefix, is_comment_line) = Self::get_comment_info(line, lang);
