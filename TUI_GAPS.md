@@ -144,7 +144,7 @@
 
 ## P3 — Info & Status
 
-- `[ ]` Session epilogue on close (formatted summary)
+- `[x]` Session epilogue on close (formatted summary)
 - `[ ]` Transcript export formatting
 - `[ ]` Share dialog with QR code display
 

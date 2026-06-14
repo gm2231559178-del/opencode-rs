@@ -1772,6 +1772,14 @@ impl TuiApp {
                     candidates.extend(file_candidates);
                 }
 
+                // MCP tool candidates
+                let mcp_candidates: Vec<String> = self.mcp_status.iter()
+                    .filter(|(_, status)| status == "connected")
+                    .filter(|(name, _)| name.to_lowercase().contains(&lower_q))
+                    .map(|(name, _)| format!("mcp:{}", name))
+                    .collect();
+                candidates.extend(mcp_candidates);
+
                 // Reference candidates
                 let ref_candidates: Vec<String> = self.references.iter()
                     .filter(|r| r.name.to_lowercase().contains(&lower_q))
