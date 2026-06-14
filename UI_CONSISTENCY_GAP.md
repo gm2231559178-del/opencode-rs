@@ -170,11 +170,14 @@ This creates subtle inconsistency — some dialogs have a maximum size, others d
 | **Critical** | Toast has single variant, no history, too short | Users miss notifications, can't distinguish error from success | ✅ Fixed |
 | **High** | Dialog widths vary arbitrarily (50/60/70) | Visual rhythm broken when switching dialog types | ✅ Fixed |
 | **High** | No backdrop dimming for dialogs | Overlapping content causes visual noise | ✅ Fixed |
-| **High** | No hover/focus state differentiation | Users can't identify interactive vs static elements | ❌ Open |
+| **High** | No hover/focus state differentiation | Users can't identify interactive vs static elements | ❌ Open (requires mouse infra) |
 | **High** | Missing `info` semantic + `permission` indicator | Status reporting is incomplete | ✅ Fixed |
 | **Medium** | Footer overloads single line, lacks semantic icons | Information hierarchy unclear | ✅ Fixed |
 | **Medium** | No spacing constants — ad-hoc throughout | Layout breaks unpredictably at different terminal sizes | ✅ Fixed |
 | **Medium** | `selectedListItemText` token ignored by dialogs | Theme token exists but unused in primary selection | ✅ Fixed |
-| **Medium** | Message rendering: no spacing between messages, no tool role indicators, long tool results shown expanded | Cluttered output, hard to scan tool use at a glance | ✅ Fixed |
+| **Medium** | No spacing between messages | Cluttered output, hard to visually separate messages | ✅ Fixed |
+| **Medium** | No tool role indicators in left border | All roles look similar with just bar color difference | ✅ Fixed |
+| **Medium** | Long tool results always expanded | Long outputs forced in view, no smart default | ✅ Fixed |
 | **Low** | `thinking_opacity` is dead code | Theme bloat with no behavioral effect | ✅ Fixed |
 | **Low** | `dialog_area` vs `centered_rect` divergence | Minor positioning inconsistency on small terminals | ✅ Fixed |
+| **Low** | Redundant `streaming`/`idle` text in footer | Symbol already conveys state, text is noise | ✅ Fixed |
