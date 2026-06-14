@@ -9,7 +9,7 @@ use crossterm::terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScree
 use crossterm::ExecutableCommand;
 use notify_rust::Notification;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, Paragraph, Wrap};
 use ratatui::Frame;
@@ -97,7 +97,7 @@ pub struct TuiApp {
     pub reasoning: String,
     pub reasoning_visible: bool,
     pub collapsed: std::collections::HashSet<usize>,
-    pub toast: Option<(String, u8)>,
+    pub toast: Option<(String, u8, Color)>,
     pub show_timestamps: bool,
     pub leader_mode: bool,
     pub file_watcher_rx: Option<std_mpsc::Receiver<String>>,
@@ -467,7 +467,7 @@ impl TuiApp {
                             };
                             if removed > 0 {
                                 self.context_tokens = self.context_tokens / 2;
-                                self.toast = Some((format!("Auto-compacted: removed {} messages", removed), 80));
+                                self.toast = Some((format!("Auto-compacted: removed {} messages", removed), 80, Color::Rgb(0xe9, 0xab, 0x2f)));
                             }
                         }
                     }
@@ -1021,7 +1021,7 @@ impl TuiApp {
             if let Some(store) = &self.store {
                 match store.delete_session(id) {
                     Ok(()) => self.show_toast(format!("Session {} deleted.", &id[..8.min(id.len())])),
-                    Err(e) => self.show_toast(format!("Delete failed: {}", e)),
+                    Err(e) => self.show_error_toast(format!("Delete failed: {}", e)),
                 }
             }
         }
@@ -1034,7 +1034,7 @@ impl TuiApp {
                 let id = self.session.try_lock().map(|s| s.id.clone()).unwrap_or_default();
                 if let Some(store) = &self.store {
                     if let Err(e) = store.rename_session(&id, value) {
-                        self.show_toast(format!("Rename failed: {}", e));
+                        self.show_error_toast(format!("Rename failed: {}", e));
                         return;
                     }
                 }
@@ -1136,7 +1136,7 @@ impl TuiApp {
             }
             "copy" => {
                 self.copy_last_response();
-                self.show_toast("Copied last response to clipboard".to_string());
+                self.show_success_toast("Copied last response to clipboard".to_string());
             }
             "rename" => {
                 let current_title = self.session.try_lock().map(|s| s.id.clone()).unwrap_or_default();
@@ -1702,7 +1702,7 @@ impl TuiApp {
                 });
             }
             _ => {
-                self.show_toast("No edited file to open".to_string());
+                self.show_warning_toast("No edited file to open".to_string());
             }
         }
     }
@@ -2088,7 +2088,7 @@ impl TuiApp {
                     });
                 }
                 KeyCode::Esc => {}
-                _ => { self.show_toast("Unknown leader key".to_string()); }
+                _ => { self.show_warning_toast("Unknown leader key".to_string()); }
             }
             return Ok(());
         }
@@ -2123,7 +2123,7 @@ impl TuiApp {
             }
             KeyCode::Char('y') if key.modifiers.contains(KeyModifiers::CONTROL) && !self.streaming => {
                 self.copy_last_response();
-                self.show_toast("Copied last response to clipboard".to_string());
+                self.show_success_toast("Copied last response to clipboard".to_string());
             }
             KeyCode::Char('e') if key.modifiers.contains(KeyModifiers::CONTROL) && !self.streaming => {
                 self.open_last_edited_file();
@@ -2337,7 +2337,19 @@ impl TuiApp {
     }
 
     fn show_toast(&mut self, msg: String) {
-        self.toast = Some((msg, 6));
+        self.toast = Some((msg, 30, Color::Rgb(0x3b, 0x82, 0xf6)));
+    }
+
+    fn show_success_toast(&mut self, msg: String) {
+        self.toast = Some((msg, 30, Color::Rgb(0x22, 0xc5, 0x5e)));
+    }
+
+    fn show_warning_toast(&mut self, msg: String) {
+        self.toast = Some((msg, 30, Color::Rgb(0xe9, 0xab, 0x2f)));
+    }
+
+    fn show_error_toast(&mut self, msg: String) {
+        self.toast = Some((msg, 60, Color::Rgb(0xef, 0x44, 0x44)));
     }
 
     fn render(&mut self, f: &mut Frame) {
@@ -2383,8 +2395,8 @@ impl TuiApp {
         }
         // Toast rendered as overlay on top of messages
         if has_toast {
-            if let Some((ref msg, _)) = self.toast {
-                self.render_toast_overlay(f, chunks[ci], msg);
+            if let Some((ref msg, _, ref color)) = self.toast.clone() {
+                self.render_toast_overlay(f, chunks[ci], msg, *color);
             }
         }
         ci += 1;
@@ -2405,7 +2417,7 @@ impl TuiApp {
         }
 
         // Decrement toast counter for next frame
-        if let Some((_, ref mut count)) = self.toast {
+        if let Some((_, ref mut count, _)) = self.toast {
             *count = count.saturating_sub(1);
             if *count == 0 {
                 self.toast = None;
@@ -2762,16 +2774,16 @@ impl TuiApp {
         }
     }
 
-    fn render_toast_overlay(&self, f: &mut Frame, area: Rect, msg: &str) {
+    fn render_toast_overlay(&self, f: &mut Frame, area: Rect, msg: &str, color: Color) {
         let t = &self.theme;
         let text = Span::styled(
             format!(" {} ", msg),
             Style::default()
-                .fg(t.success)
+                .fg(color)
                 .bg(t.background_panel)
                 .add_modifier(Modifier::BOLD),
         );
-        let w = msg.len() as u16 + 4;
+        let w = msg.len() as u16 + 6;
         let overlay = Rect {
             x: area.right().saturating_sub(w.min(area.width)),
             y: area.bottom().saturating_sub(1),
@@ -2988,7 +3000,13 @@ impl TuiApp {
                 } else {
                     Modifier::empty()
                 };
-                ListItem::new(lines).style(Style::default().bg(bg_color).add_modifier(fade_mod))
+                // Apply thinking_opacity dimming to reasoning messages
+                let thinking_mod = if m.role == "reasoning" {
+                    Modifier::DIM
+                } else {
+                    Modifier::empty()
+                };
+                ListItem::new(lines).style(Style::default().bg(bg_color).add_modifier(fade_mod).add_modifier(thinking_mod))
             })
             .collect();
 
@@ -3578,7 +3596,7 @@ impl TuiApp {
                 };
                 let selected = i as isize == idx;
                 let style = if selected {
-                    Style::default().fg(t.text).bg(t.accent)
+                    Style::default().fg(t.selected_list_item_text).bg(t.primary)
                 } else {
                     Style::default().fg(t.text).bg(t.background_panel)
                 };
@@ -3642,8 +3660,11 @@ impl TuiApp {
         let t = &self.theme;
         let area = f.area();
 
-        // Clear area for overlay effect
+        // Dimmed backdrop — fill full area with panel background to create depth contrast
         f.render_widget(Clear, area);
+        let backdrop = Block::default()
+            .style(Style::default().bg(t.background_element));
+        f.render_widget(backdrop, area);
 
         use ActiveDialog::*;
         match dialog {
@@ -3827,7 +3848,7 @@ impl TuiApp {
             .block(Block::default().borders(Borders::ALL)
                 .title(format!(" {} ", title))
                 .border_style(Style::default().fg(t.warning)));
-        let inner = Self::centered_rect(area, 50, 6);
+        let inner = Self::centered_rect(area, 60, 6);
         f.render_widget(Clear, inner);
         f.render_widget(para, inner);
     }
@@ -3937,7 +3958,7 @@ impl TuiApp {
             for &(i, opt) in &group.items {
                 let is_sel = i == selected;
                 let style = if is_sel {
-                    Style::default().fg(t.bg).bg(t.primary)
+                    Style::default().fg(t.selected_list_item_text).bg(t.primary)
                 } else {
                     Style::default().fg(t.text)
                 };
@@ -3960,7 +3981,7 @@ impl TuiApp {
         ]));
 
         let height = (lines.len() as u16 + 2).min(area.height.saturating_sub(2));
-        let dialog_area = Self::centered_rect(area, 70, height);
+        let dialog_area = Self::centered_rect(area, 60, height);
         let para = Paragraph::new(lines)
             .style(Style::default().bg(t.background_panel))
             .block(Block::default().borders(Borders::ALL)
@@ -3971,11 +3992,7 @@ impl TuiApp {
     }
 
     fn dialog_area(area: Rect) -> Rect {
-        let width = area.width.min(80);
-        let height = area.height.min(40);
-        let x = area.x + (area.width.saturating_sub(width)) / 2;
-        let y = area.y + (area.height.saturating_sub(height)) / 3;
-        Rect { x, y, width, height }
+        Self::centered_rect(area, 60, 40.min(area.height))
     }
 
     fn centered_rect(area: Rect, width: u16, height: u16) -> Rect {
