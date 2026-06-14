@@ -2097,9 +2097,6 @@ impl TuiApp {
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.quit = true;
             }
-            KeyCode::Char('q') if self.input.is_empty() => {
-                self.quit = true;
-            }
             KeyCode::Char('b') if key.modifiers.contains(KeyModifiers::CONTROL) && self.input.is_empty() => {
                 self.sidebar_visible = !self.sidebar_visible;
                 self.show_toast(if self.sidebar_visible { "Sidebar shown".to_string() } else { "Sidebar hidden".to_string() });
@@ -2337,7 +2334,8 @@ impl TuiApp {
     }
 
     fn show_toast(&mut self, msg: String) {
-        self.toast = Some((msg, 30, Color::Rgb(0x3b, 0x82, 0xf6)));
+        let color = self.theme.info;
+        self.toast = Some((msg, 30, color));
     }
 
     fn show_success_toast(&mut self, msg: String) {
@@ -2798,8 +2796,8 @@ impl TuiApp {
     }
 
     fn render_footer(&self, f: &mut Frame, area: Rect) {
-        let status = if self.streaming { "streaming" } else { "idle" };
         let t = &self.theme;
+        let status_symbol = if self.streaming { "●" } else { "○" };
         let left = Span::styled(
             format!(" {} ", self.model_name),
             Style::default().fg(t.primary).add_modifier(Modifier::BOLD),
@@ -2811,7 +2809,7 @@ impl TuiApp {
             String::new()
         };
         let right = Span::styled(
-            format!(" {}:{} {} | {} ", self.theme_name, self.prompt_count, char_info, status),
+            format!(" {}:{} {} | {} {} ", self.theme_name, self.prompt_count, char_info, status_symbol, if self.streaming { "streaming" } else { "idle" }),
             Style::default().fg(if self.streaming { t.success } else { t.text_muted }),
         );
         let mut spans: Vec<Span> = Vec::new();
@@ -2837,6 +2835,16 @@ impl TuiApp {
             spans.push(Span::styled(" │ ", Style::default().fg(t.border)));
         }
         spans.push(left);
+
+        // Pending permission indicator
+        if self.pending_perm.is_some() {
+            spans.push(Span::styled(" │ ", Style::default().fg(t.border)));
+            spans.push(Span::styled(
+                " △ perm ",
+                Style::default().fg(t.warning).add_modifier(Modifier::BOLD),
+            ));
+        }
+
         spans.push(Span::styled("│", Style::default().fg(t.border)));
         spans.push(right);
 
@@ -3001,7 +3009,7 @@ impl TuiApp {
                     Modifier::empty()
                 };
                 // Apply thinking_opacity dimming to reasoning messages
-                let thinking_mod = if m.role == "reasoning" {
+                let thinking_mod = if m.role == "reasoning" && t.thinking_opacity < 1.0 {
                     Modifier::DIM
                 } else {
                     Modifier::empty()
@@ -3767,7 +3775,7 @@ impl TuiApp {
             "OpenCode TUI Key Bindings",
             "",
             "General:",
-            "  Ctrl+C / q     Quit",
+            "  Ctrl+C          Quit",
             "  Space          Leader menu (empty input)",
             "  Esc            Cancel streaming / Close dialogs",
             "  Ctrl+Y         Copy last response",
