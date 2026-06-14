@@ -85,7 +85,7 @@ pub struct TuiApp {
     pub plan_mode: bool,
     pub autocomplete_candidates: Vec<String>,
     pub autocomplete_idx: isize,
-    pub theme: &'static Theme,
+    pub theme: Theme,
     pub theme_name: String,
     pub reasoning: String,
     pub reasoning_visible: bool,
@@ -160,7 +160,7 @@ impl TuiApp {
             plan_mode: false,
             autocomplete_candidates: Vec::new(),
             autocomplete_idx: -1,
-            theme: &crate::theme::DEFAULT,
+            theme: crate::theme::Theme { ..crate::theme::DEFAULT },
             theme_name: "default".to_string(),
             reasoning: String::new(),
             reasoning_visible: true,
@@ -2240,7 +2240,7 @@ impl TuiApp {
     }
 
     fn render_sidebar(&self, f: &mut Frame, area: Rect) {
-        let t = self.theme;
+        let t = &self.theme;
         let inner_area = Rect {
             x: area.x,
             y: area.y,
@@ -2416,7 +2416,7 @@ impl TuiApp {
             Some(v) => v,
             None => return,
         };
-        let t = self.theme;
+        let t = &self.theme;
         let max_lines = (f.area().height as usize).saturating_sub(6);
         let scroll = *scroll;
 
@@ -2461,7 +2461,7 @@ impl TuiApp {
     }
 
     fn render_toast_overlay(&self, f: &mut Frame, area: Rect, msg: &str) {
-        let t = self.theme;
+        let t = &self.theme;
         let text = Span::styled(
             format!(" {} ", msg),
             Style::default()
@@ -2485,7 +2485,7 @@ impl TuiApp {
 
     fn render_status(&self, f: &mut Frame, area: Rect) {
         let status = if self.streaming { "streaming" } else { "idle" };
-        let t = self.theme;
+        let t = &self.theme;
         let mode_tag = if self.plan_mode {
             Span::styled(
                 " PLAN ",
@@ -2526,7 +2526,7 @@ impl TuiApp {
     }
 
     fn render_messages(&self, f: &mut Frame, area: Rect) {
-        let t = self.theme;
+        let t = &self.theme;
         let w = area.width as usize;
         let total = self.messages.len();
         // Estimate visible items: assume ~3 lines per message on average
@@ -2638,7 +2638,18 @@ impl TuiApp {
     fn render_highlighted(content: &str, width: usize, out: &mut Vec<Line>, theme: &Theme) {
         let fence_style = Style::default().fg(theme.border).add_modifier(Modifier::DIM);
         let lang_style = Style::default().fg(theme.tool_call);
-        let text_style = Style::default().fg(theme.text);
+        let text_style = Style::default().fg(theme.markdown_text);
+        let heading_style = Style::default().fg(theme.markdown_heading).add_modifier(Modifier::BOLD);
+        let block_quote_style = Style::default().fg(theme.markdown_block_quote).add_modifier(Modifier::DIM);
+        let code_style = Style::default().fg(theme.markdown_code);
+        let link_style = Style::default().fg(theme.markdown_link);
+        let link_text_style = Style::default().fg(theme.markdown_link_text);
+        let emph_style = Style::default().fg(theme.markdown_emph);
+        let strong_style = Style::default().fg(theme.markdown_strong);
+        let hr_style = Style::default().fg(theme.markdown_horizontal_rule).add_modifier(Modifier::DIM);
+        let list_style = Style::default().fg(theme.markdown_list_item);
+        let enum_style = Style::default().fg(theme.markdown_list_enumeration);
+        let code_block_style = Style::default().fg(theme.markdown_code_block);
         let diff_add = Style::default().fg(theme.diff_add).add_modifier(Modifier::DIM);
         let diff_del = Style::default().fg(theme.diff_del).add_modifier(Modifier::DIM);
         let diff_hunk = Style::default().fg(theme.diff_hunk).add_modifier(Modifier::DIM);
@@ -2679,16 +2690,123 @@ impl TuiApp {
                 out.push(Line::from(vec![Span::styled(format!("  {}", line), diff_add)]));
             } else if line.starts_with('-') && !line.starts_with("---") {
                 out.push(Line::from(vec![Span::styled(format!("  {}", line), diff_del)]));
-            } else {
-                let wrapped = textwrap::fill(line, width as usize);
+            } else if line.starts_with("### ") {
+                let text = &line[4..];
+                let wrapped = textwrap::fill(text, (width as usize).saturating_sub(4));
                 for wl in wrapped.lines() {
-                    out.push(Line::from(vec![Span::styled(format!("  {}", wl), text_style)]));
+                    out.push(Line::from(vec![Span::styled(format!("  ### {}", wl), heading_style)]));
                 }
+            } else if line.starts_with("## ") {
+                let text = &line[3..];
+                let wrapped = textwrap::fill(text, (width as usize).saturating_sub(4));
+                for wl in wrapped.lines() {
+                    out.push(Line::from(vec![Span::styled(format!("  ## {}", wl), heading_style)]));
+                }
+            } else if line.starts_with("# ") {
+                let text = &line[2..];
+                let wrapped = textwrap::fill(text, (width as usize).saturating_sub(4));
+                for wl in wrapped.lines() {
+                    out.push(Line::from(vec![Span::styled(format!("  # {}", wl), heading_style)]));
+                }
+            } else if line.starts_with("> ") {
+                let text = &line[2..];
+                let wrapped = textwrap::fill(text, (width as usize).saturating_sub(4));
+                for wl in wrapped.lines() {
+                    out.push(Line::from(vec![Span::styled(format!("  ▎{}", wl), block_quote_style)]));
+                }
+            } else if line.starts_with("- ") || line.starts_with("* ") || line.starts_with("+ ") {
+                let marker = &line[..1];
+                let text = &line[2..];
+                let wrapped = textwrap::fill(text, (width as usize).saturating_sub(4));
+                for (j, wl) in wrapped.lines().enumerate() {
+                    if j == 0 {
+                        out.push(Line::from(vec![
+                            Span::styled(format!("  {}", marker), list_style),
+                            Span::styled(format!(" {}", wl), text_style),
+                        ]));
+                    } else {
+                        out.push(Line::from(vec![
+                            Span::raw("    "),
+                            Span::styled(wl.to_string(), text_style),
+                        ]));
+                    }
+                }
+            } else if line.starts_with(|c: char| c.is_ascii_digit()) && line.contains(". ") {
+                if let Some(dot_pos) = line.find(". ") {
+                    let num = &line[..=dot_pos];
+                    let text = &line[dot_pos+2..];
+                    let wrapped = textwrap::fill(text, (width as usize).saturating_sub(4));
+                    for (j, wl) in wrapped.lines().enumerate() {
+                        if j == 0 {
+                            out.push(Line::from(vec![
+                                Span::styled(format!("  {}", num), enum_style),
+                                Span::styled(format!("{}", wl), text_style),
+                            ]));
+                        } else {
+                            out.push(Line::from(vec![
+                                Span::raw("    "),
+                                Span::styled(wl.to_string(), text_style),
+                            ]));
+                        }
+                    }
+                } else {
+                    Self::render_markdown_line(line, width, out, text_style, code_style, link_style, link_text_style, emph_style, strong_style);
+                }
+            } else if line.trim() == "---" || line.trim() == "***" || line.trim() == "___" {
+                out.push(Line::from(vec![Span::styled(format!("  {}", line.trim()), hr_style)]));
+            } else {
+                Self::render_markdown_line(line, width, out, text_style, code_style, link_style, link_text_style, emph_style, strong_style);
             }
         }
 
         if in_code && !code_buf.is_empty() {
             Self::render_code_block(&code_buf, width, &code_lang, out, theme);
+        }
+    }
+
+    fn render_markdown_line(line: &str, width: usize, out: &mut Vec<Line>,
+        text_style: Style, code_style: Style, link_style: Style, link_text_style: Style,
+        emph_style: Style, strong_style: Style) {
+        let wrapped = textwrap::fill(line, width as usize);
+        for wl in wrapped.lines() {
+            let mut spans = vec![Span::raw("  ")];
+            let mut i = 0;
+            let chars: Vec<char> = wl.chars().collect();
+            while i < chars.len() {
+                // Inline code
+                if chars[i] == '`' {
+                    let start = i;
+                    i += 1;
+                    while i < chars.len() && chars[i] != '`' { i += 1; }
+                    if i < chars.len() { i += 1; }
+                    let s: String = chars[start..i].iter().collect();
+                    spans.push(Span::styled(s, code_style));
+                    continue;
+                }
+                // Bold **text**
+                if i + 1 < chars.len() && chars[i] == '*' && chars[i+1] == '*' {
+                    let start = i;
+                    i += 2;
+                    while i + 1 < chars.len() && !(chars[i] == '*' && chars[i+1] == '*') { i += 1; }
+                    if i + 1 < chars.len() { i += 2; } else { i += 1; }
+                    let s: String = chars[start..i].iter().collect();
+                    spans.push(Span::styled(s, strong_style));
+                    continue;
+                }
+                // Italic *text*
+                if chars[i] == '*' {
+                    let start = i;
+                    i += 1;
+                    while i < chars.len() && chars[i] != '*' { i += 1; }
+                    if i < chars.len() { i += 1; }
+                    let s: String = chars[start..i].iter().collect();
+                    spans.push(Span::styled(s, emph_style));
+                    continue;
+                }
+                spans.push(Span::raw(chars[i].to_string()));
+                i += 1;
+            }
+            out.push(Line::from(spans));
         }
     }
 
@@ -2730,11 +2848,16 @@ impl TuiApp {
             return Vec::new();
         }
 
+        let fn_style = Style::default().fg(theme.syntax_function);
         let kw_style = Style::default().fg(theme.syntax_keyword);
         let str_style = Style::default().fg(theme.syntax_string);
         let comment_style = Style::default().fg(theme.syntax_comment);
         let num_style = Style::default().fg(theme.syntax_number);
         let builtin_style = Style::default().fg(theme.syntax_builtin);
+        let var_style = Style::default().fg(theme.syntax_variable);
+        let ty_style = Style::default().fg(theme.syntax_type);
+        let op_style = Style::default().fg(theme.syntax_operator);
+        let punct_style = Style::default().fg(theme.syntax_punctuation);
 
         let line = line.trim_end();
         let (comment_prefix, is_comment_line) = Self::get_comment_info(line, lang);
@@ -2743,6 +2866,7 @@ impl TuiApp {
         }
 
         let keywords = Self::get_keywords(lang);
+        let types = Self::get_types(lang);
         let mut spans = Vec::new();
         let mut i = 0;
         let chars: Vec<char> = line.chars().collect();
@@ -2823,16 +2947,27 @@ impl TuiApp {
 
                 if keywords.contains(&word.as_str()) {
                     spans.push(Span::styled(word, kw_style));
+                } else if types.contains(&word.as_str()) {
+                    spans.push(Span::styled(word, ty_style));
                 } else if Self::is_builtin(&word, lang) {
                     spans.push(Span::styled(word, builtin_style));
+                } else if word.chars().next().map_or(false, |c| c.is_uppercase()) {
+                    spans.push(Span::styled(word, var_style));
                 } else {
                     spans.push(Span::raw(word));
                 }
                 continue;
             }
 
-            // Skip whitespace and other characters
-            spans.push(Span::raw(chars[i].to_string()));
+            // Punctuation / operators
+            let ch = chars[i];
+            if "{}()[]".contains(ch) {
+                spans.push(Span::styled(ch.to_string(), punct_style));
+            } else if "+-*/%=!<>&|^~".contains(ch) {
+                spans.push(Span::styled(ch.to_string(), op_style));
+            } else {
+                spans.push(Span::raw(ch.to_string()));
+            }
             i += 1;
         }
 
@@ -2842,14 +2977,18 @@ impl TuiApp {
         let lang = crate::util::filetype::normalize_language(lang);
         let (single, can_be_inline): (&str, bool) = match lang {
             "rust" | "go" | "c" | "cpp" | "java" | "javascript" | "typescript" | "swift" | "kotlin" | "scala" | "dart" | "zig" => ("//", true),
-            "python" | "r" | "ruby" | "yaml" | "toml" | "ini" | "cfg" | "perl" | "elixir" => ("#", true),
-            "lua" => ("--", true),
-            "sql" => ("--", true),
-            "haskell" => ("--", true),
+            "python" | "r" | "ruby" | "yaml" | "toml" | "ini" | "cfg" | "perl" | "elixir" | "crystal" | "nim" => ("#", true),
+            "lua" | "sql" | "haskell" | "elm" | "fsharp" | "erlang" => ("--", true),
             "clojure" | "lisp" | "scheme" => (";", true),
             "html" | "xml" | "svg" => ("<!--", false),
             "php" => ("//", true),
-            "bash" | "shell" | "sh" => ("#", true),
+            "bash" | "shell" | "sh" | "zsh" | "fish" | "makefile" | "dockerfile" | "cmake" | "gradle" | "terraform" | "hcl" => ("#", true),
+            "powershell" | "ps1" => ("#", true),
+            "batch" | "bat" | "cmd" => ("REM", false),
+            "protobuf" | "proto" => ("//", true),
+            "graphql" | "gql" => ("#", true),
+            "latex" | "tex" => ("%", true),
+            "diff" | "patch" => ("//", true),
             _ => ("", false),
         };
 
@@ -2886,23 +3025,58 @@ impl TuiApp {
         "haskell" => &["class", "data", "default", "deriving", "do", "else", "family", "forall", "foreign", "hiding", "if", "import", "in", "infix", "infixl", "infixr", "instance", "let", "module", "newtype", "of", "open", "pattern", "qualified", "then", "type", "where", "_"],
         "dart" => &["abstract", "as", "assert", "async", "await", "break", "case", "catch", "class", "const", "continue", "covariant", "default", "deferred", "do", "dynamic", "else", "enum", "export", "extends", "extension", "external", "factory", "false", "final", "finally", "for", "Function", "get", "hide", "if", "implements", "import", "in", "interface", "is", "late", "library", "mixin", "new", "null", "on", "operator", "optional", "part", "required", "rethrow", "return", "set", "show", "static", "super", "switch", "sync", "this", "throw", "true", "try", "typedef", "var", "void", "while", "with", "yield"],
         "r" => &["FALSE", "NULL", "NA", "NaN", "TRUE", "break", "else", "for", "function", "if", "in", "Inf", "next", "repeat", "return", "while"],
+        "bash" => &["if", "then", "else", "elif", "fi", "case", "esac", "for", "while", "until", "do", "done", "in", "select", "function", "return", "exit", "break", "continue", "declare", "local", "export", "readonly", "unset", "eval", "exec", "shift", "source", "trap", "type", "typeset", "ulimit", "umask", "wait", "getopts", "let", "test"],
+        "sql" => &["SELECT", "FROM", "WHERE", "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE", "CREATE", "TABLE", "ALTER", "DROP", "INDEX", "VIEW", "JOIN", "INNER", "LEFT", "RIGHT", "OUTER", "FULL", "CROSS", "ON", "AND", "OR", "NOT", "IN", "BETWEEN", "LIKE", "IS", "NULL", "ORDER", "BY", "GROUP", "HAVING", "LIMIT", "OFFSET", "DISTINCT", "AS", "UNION", "ALL", "EXISTS", "CASE", "WHEN", "THEN", "ELSE", "END", "CAST", "COUNT", "SUM", "AVG", "MIN", "MAX", "COALESCE", "NULLIF", "BEGIN", "COMMIT", "ROLLBACK", "SAVEPOINT", "GRANT", "REVOKE", "TRIGGER", "PROCEDURE", "FUNCTION", "PACKAGE", "CURSOR", "LOOP", "FETCH", "CLOSE", "IF", "ELSIF", "WHILE", "FOR", "RETURN", "DECLARE", "EXCEPTION", "RAISE"],
+        "perl" => &["if", "unless", "elsif", "else", "given", "when", "default", "for", "foreach", "while", "until", "do", "continue", "last", "next", "redo", "goto", "return", "my", "our", "state", "local", "use", "require", "no", "package", "sub", "BEGIN", "CHECK", "INIT", "END", "eval", "die", "warn", "caller", "wantarray", "bless", "ref", "tie", "untie", "tied", "defined", "undef", "delete", "exists", "lock"],
         _ => &[],
+        }
+    }
+
+    fn get_types(lang: &str) -> &'static [&'static str] {
+        let lang = crate::util::filetype::normalize_language(lang);
+        match lang {
+            "rust" => &["i8", "i16", "i32", "i64", "i128", "u8", "u16", "u32", "u64", "u128", "f32", "f64", "bool", "char", "str", "String", "Vec", "HashMap", "HashSet", "Option", "Result", "Box", "Rc", "Arc", "Cell", "RefCell", "Mutex", "Path", "PathBuf", "OsString", "Duration", "io::Error", "io::Result"],
+            "go" => &["bool", "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16", "uint32", "uint64", "float32", "float64", "complex64", "complex128", "string", "byte", "rune", "error", "any"],
+            "python" => &["int", "float", "str", "bool", "bytes", "list", "dict", "tuple", "set", "frozenset", "None", "Any", "Optional", "List", "Dict", "Tuple", "Set", "Callable", "TypeVar", "Generic", "Protocol"],
+            "javascript" | "typescript" => &["number", "string", "boolean", "undefined", "null", "symbol", "bigint", "object", "any", "never", "void", "unknown", "Array", "Promise", "Record", "Partial", "Required", "Pick", "Omit", "Readonly", "Exclude", "Extract", "NonNullable"],
+            "java" => &["byte", "short", "int", "long", "float", "double", "boolean", "char", "String", "Object", "List", "ArrayList", "Map", "HashMap", "Set", "HashSet", "Optional", "Integer", "Long", "Double", "Boolean", "Character", "Void", "Throwable", "Exception", "RuntimeException"],
+            "c" | "cpp" => &["int", "long", "short", "char", "float", "double", "bool", "void", "size_t", "int8_t", "int16_t", "int32_t", "int64_t", "uint8_t", "uint16_t", "uint32_t", "uint64_t", "string", "vector", "map", "set", "pair", "optional", "unique_ptr", "shared_ptr"],
+            "ruby" => &["String", "Integer", "Float", "Symbol", "Array", "Hash", "Range", "Regexp", "Time", "Date", "DateTime", "Proc", "Lambda", "Method", "Class", "Module", "Object", "BasicObject", "Kernel", "NilClass", "TrueClass", "FalseClass", "Enumerator"],
+            "php" => &["int", "float", "string", "bool", "array", "object", "void", "null", "mixed", "never", "self", "static", "parent", "callable", "iterable", "false", "true", "Stringable", "ArrayAccess", "Traversable", "Countable"],
+            "swift" => &["Int", "Int8", "Int16", "Int32", "Int64", "UInt", "UInt8", "UInt16", "UInt32", "UInt64", "Float", "Float32", "Float64", "Double", "Bool", "String", "Character", "Optional", "Array", "Dictionary", "Set", "Data", "Date", "URL", "Error", "Result", "Any", "AnyObject", "Codable", "Equatable", "Hashable", "Comparable"],
+            "kotlin" => &["Int", "Long", "Short", "Byte", "Double", "Float", "Boolean", "Char", "String", "Any", "Unit", "Nothing", "Array", "List", "MutableList", "Set", "MutableSet", "Map", "MutableMap", "Pair", "Triple", "Iterable", "Collection", "Comparable", "CharSequence", "Number"],
+            "scala" => &["Int", "Long", "Short", "Byte", "Double", "Float", "Boolean", "Char", "String", "Unit", "Nothing", "Any", "AnyVal", "AnyRef", "Option", "Some", "None", "Either", "Left", "Right", "Try", "Success", "Failure", "List", "Set", "Map", "Seq", "Array", "Future", "ExecutionContext"],
+            "lua" => &["nil", "boolean", "number", "string", "table", "function", "thread", "userdata"],
+            "haskell" => &["Bool", "True", "False", "Maybe", "Just", "Nothing", "Either", "Left", "Right", "IO", "Int", "Integer", "Float", "Double", "Char", "String", "Ord", "Eq", "Show", "Read", "Enum", "Bounded", "Num", "Integral", "Floating", "Functor", "Applicative", "Monad", "Foldable", "Traversable"],
+            "dart" => &["int", "double", "num", "bool", "String", "Object", "dynamic", "void", "Never", "Null", "List", "Set", "Map", "Record", "Comparable", "Exception", "Error", "Future", "Stream", "Iterable", "Function", "Symbol", "Type"],
+            "bash" => &["true", "false"],
+            "sql" => &["INTEGER", "INT", "BIGINT", "SMALLINT", "TINYINT", "REAL", "FLOAT", "DOUBLE", "DECIMAL", "NUMERIC", "BOOLEAN", "CHAR", "VARCHAR", "TEXT", "CLOB", "BLOB", "DATE", "TIMESTAMP", "DATETIME", "TIME", "INTERVAL", "JSON", "UUID", "ARRAY", "MONEY", "SERIAL"],
+            "perl" => &["Scalar", "Array", "Hash", "Ref", "Code", "Glob", "IO"],
+            _ => &[],
         }
     }
 
     fn is_builtin(word: &str, lang: &str) -> bool {
         let lang = crate::util::filetype::normalize_language(lang);
         match lang {
-        "python" => matches!(word, "print" | "len" | "range" | "type" | "str" | "int" | "float" | "list" | "dict" | "set" | "tuple" | "bool" | "super" | "self" | "open" | "map" | "filter" | "zip" | "enumerate" | "sorted" | "reversed" | "any" | "all" | "sum" | "min" | "max" | "abs" | "round" | "isinstance" | "hasattr" | "getattr" | "setattr" | "ValueError" | "TypeError" | "KeyError" | "Exception" | "BaseException" | "object" | "property" | "staticmethod" | "classmethod"),
-        "javascript" | "typescript" => matches!(word, "console" | "log" | "error" | "warn" | "require" | "module" | "exports" | "process" | "Buffer" | "setTimeout" | "setInterval" | "fetch" | "Promise" | "Array" | "Object" | "String" | "Number" | "Boolean" | "Map" | "Set" | "Symbol" | "JSON" | "Math" | "Date" | "RegExp" | "Error" | "undefined" | "null" | "true" | "false" | "window" | "document" | "globalThis" | "exports" | "describe" | "it" | "test" | "expect" | "jest"),
+        "python" => matches!(word, "print" | "len" | "range" | "type" | "str" | "int" | "float" | "list" | "dict" | "set" | "tuple" | "bool" | "super" | "self" | "open" | "map" | "filter" | "zip" | "enumerate" | "sorted" | "reversed" | "any" | "all" | "sum" | "min" | "max" | "abs" | "round" | "isinstance" | "hasattr" | "getattr" | "setattr" | "ValueError" | "TypeError" | "KeyError" | "Exception" | "BaseException" | "object" | "property" | "staticmethod" | "classmethod" | "input" | "eval" | "exec" | "compile" | "repr" | "format" | "id" | "hash" | "help" | "dir" | "vars" | "locals" | "globals" | "iter" | "next" | "slice" | "bin" | "oct" | "hex" | "ord" | "chr" | "divmod" | "pow"),
+        "javascript" | "typescript" => matches!(word, "console" | "log" | "error" | "warn" | "require" | "module" | "exports" | "process" | "Buffer" | "setTimeout" | "setInterval" | "fetch" | "Promise" | "Array" | "Object" | "String" | "Number" | "Boolean" | "Map" | "Set" | "Symbol" | "JSON" | "Math" | "Date" | "RegExp" | "Error" | "undefined" | "null" | "true" | "false" | "window" | "document" | "globalThis" | "exports" | "describe" | "it" | "test" | "expect" | "jest" | "console" | "parseInt" | "parseFloat" | "isNaN" | "isFinite" | "decodeURI" | "encodeURI" | "localStorage" | "sessionStorage"),
         "ruby" => matches!(word, "puts" | "print" | "p" | "require" | "include" | "extend" | "attr_accessor" | "attr_reader" | "attr_writer" | "private" | "protected" | "public" | "raise" | "fail" | "catch" | "throw" | "lambda" | "proc" | "eval" | "loop" | "sleep" | "gets" | "chomp" | "inspect" | "to_s" | "to_i" | "to_f" | "nil?" | "empty?" | "length" | "size" | "each" | "map" | "select" | "reject" | "reduce" | "inject" | "sort" | "uniq" | "first" | "last"),
         "php" => matches!(word, "echo" | "print" | "die" | "exit" | "isset" | "unset" | "empty" | "require" | "require_once" | "include" | "include_once" | "defined" | "array" | "count" | "strlen" | "strpos" | "substr" | "explode" | "implode" | "json_encode" | "json_decode" | "preg_match" | "sprintf" | "var_dump" | "error_log" | "header" | "session_start" | "setcookie" | "is_null" | "is_numeric" | "PHP_EOL" | "true" | "false" | "null"),
+        "rust" => matches!(word, "std" | "core" | "alloc" | "println" | "print" | "eprintln" | "eprint" | "format" | "write" | "writeln" | "vec" | "format_args" | "assert" | "assert_eq" | "assert_ne" | "panic" | "unreachable" | "unimplemented" | "todo" | "dbg" | "include_str" | "include_bytes" | "file" | "line" | "column" | "cfg" | "env" | "option_env" | "concat" | "stringify"),
+        "go" => matches!(word, "fmt" | "Print" | "Printf" | "Println" | "Sprint" | "Sprintf" | "Sprintln" | "Fprint" | "Fprintf" | "Fprintln" | "Errorf" | "append" | "copy" | "delete" | "len" | "cap" | "make" | "new" | "close" | "panic" | "recover" | "print" | "println" | "error" | "string"),
+        "java" => matches!(word, "System" | "out" | "err" | "in" | "println" | "print" | "printf" | "String" | "Integer" | "Double" | "Math" | "Arrays" | "Collections" | "Objects" | "Optional" | "Stream" | "Collectors" | "List" | "ArrayList" | "Map" | "HashMap" | "Set" | "HashSet" | "Thread" | "Runnable" | "Comparator" | "Comparable" | "Exception" | "RuntimeException" | "IllegalArgumentException" | "NullPointerException"),
+        "swift" => matches!(word, "print" | "debugPrint" | "dump" | "fatalError" | "precondition" | "preconditionFailure" | "assert" | "assertionFailure" | "abs" | "min" | "max" | "zip" | "stride" | "sequence" | "repeatElement" | "type" | "sizeof" | "UIColor" | "NSObject" | "CGRect" | "CGSize" | "CGPoint"),
+        "kotlin" => matches!(word, "println" | "print" | "readLine" | "require" | "check" | "error" | "TODO" | "run" | "let" | "apply" | "also" | "with" | "use" | "repeat" | "listOf" | "setOf" | "mapOf" | "arrayOf" | "emptyList" | "emptyMap" | "emptySet" | "mutableListOf" | "mutableMapOf" | "mutableSetOf" | "sequenceOf"),
+        "bash" => matches!(word, "echo" | "printf" | "read" | "source" | "export" | "local" | "declare" | "typeset" | "test" | "let" | "eval" | "exec" | "exit" | "return" | "break" | "continue" | "shift" | "cd" | "pwd" | "ls" | "mkdir" | "rm" | "cp" | "mv" | "cat" | "grep" | "sed" | "awk" | "find" | "xargs" | "sort" | "uniq" | "wc" | "head" | "tail" | "cut" | "tr" | "diff" | "chmod" | "chown"),
+        "sql" => matches!(word, "SELECT" | "FROM" | "WHERE" | "INSERT" | "INTO" | "VALUES" | "UPDATE" | "SET" | "DELETE" | "CREATE" | "TABLE" | "ALTER" | "DROP" | "INDEX" | "VIEW" | "JOIN" | "INNER" | "LEFT" | "RIGHT" | "OUTER" | "FULL" | "CROSS" | "ON" | "AND" | "OR" | "NOT" | "IN" | "BETWEEN" | "LIKE" | "IS" | "NULL" | "TRUE" | "FALSE" | "ORDER" | "BY" | "GROUP" | "HAVING" | "LIMIT" | "OFFSET" | "DISTINCT" | "AS" | "UNION" | "ALL" | "EXISTS" | "CASE" | "WHEN" | "THEN" | "ELSE" | "END" | "CAST" | "COUNT" | "SUM" | "AVG" | "MIN" | "MAX" | "COALESCE" | "NULLIF"),
+        "perl" => matches!(word, "print" | "say" | "warn" | "die" | "exit" | "shift" | "pop" | "push" | "unshift" | "splice" | "keys" | "values" | "exists" | "defined" | "delete" | "length" | "substr" | "index" | "rindex" | "join" | "split" | "map" | "grep" | "sort" | "reverse" | "chomp" | "chr" | "ord" | "uc" | "lc" | "open" | "close" | "read" | "write" | "tell" | "seek" | "require" | "use" | "no" | "local" | "my" | "our" | "state" | "bless" | "ref" | "tie" | "untie"),
         _ => false,
         }
     }
 
     fn render_autocomplete_popup(&self, f: &mut Frame, area: Rect, candidates: &[String], idx: isize) {
-        let t = self.theme;
+        let t = &self.theme;
         let is_slash = self.input.starts_with('/') && !self.input.contains(' ');
         let header = if is_slash { " Commands " } else { " @ Files " };
 
@@ -2943,7 +3117,7 @@ impl TuiApp {
     }
 
     fn render_input(&self, f: &mut Frame, area: Rect) {
-        let t = self.theme;
+        let t = &self.theme;
         let border_color = if self.leader_mode { t.border_active } else { t.border };
 
         let outer_block = Block::default()
@@ -2981,7 +3155,7 @@ impl TuiApp {
             Some(d) => d,
             None => return,
         };
-        let t = self.theme;
+        let t = &self.theme;
         let area = f.area();
 
         // Clear area for overlay effect

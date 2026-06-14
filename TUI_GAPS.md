@@ -6,6 +6,7 @@
 - `[ ]` not started
 - `[~]` in progress
 - `[x]` done
+- `[-]` ignore
 
 ---
 
