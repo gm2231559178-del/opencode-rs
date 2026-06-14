@@ -141,6 +141,7 @@ const DIALOG_HEIGHT: u16 = 40;
 const TOAST_DURATION_NORMAL: u8 = 30;
 const TOAST_DURATION_ERROR: u8 = 60;
 const TOAST_DURATION_LONG: u8 = 80;
+const TOOL_RESULT_COLLAPSE_THRESHOLD: usize = 200;
 
 impl TuiApp {
     pub fn new(session: Session, store: Option<SessionStore>) -> Self {
@@ -426,11 +427,15 @@ impl TuiApp {
                         } else {
                             format!("{} ({} chars)\n{}", name, output.len(), preview)
                         };
+                        let is_long = content.len() > TOOL_RESULT_COLLAPSE_THRESHOLD;
                         self.messages.push(TuiMessage {
             age: 0, timestamp: chrono::Utc::now(),
                             role: "tool_result".to_string(),
                             content,
                         });
+                        if is_long {
+                            self.collapsed.insert(self.messages.len() - 1);
+                        }
                     }
                     StreamEvent::Done { response } => {
                         if self.notify {
@@ -2959,8 +2964,14 @@ impl TuiApp {
 
                 let collapsed = self.collapsed.contains(&idx);
                 let display_content = if collapsed && m.content.len() > 100 {
-                    let preview: String = m.content.chars().take(100).collect();
-                    format!("{}... [+{} chars collapsed]", preview, m.content.len() - 100)
+                    if m.role == "tool_result" {
+                        let first_line = m.content.lines().next().unwrap_or(&m.content);
+                        let remaining = m.content.len() - first_line.len();
+                        format!("{} [+{} more - press o to expand]", first_line, remaining)
+                    } else {
+                        let preview: String = m.content.chars().take(100).collect();
+                        format!("{}... [+{} chars collapsed]", preview, m.content.len() - 100)
+                    }
                 } else if !collapsed && !self.reasoning_visible && m.role == "reasoning" {
                     String::new()
                 } else {
@@ -2979,7 +2990,13 @@ impl TuiApp {
                 };
                 let pad = Span::raw(" ");
 
-                let mut lines = vec![Line::from(vec![bar, spinner, pad])];
+                let role_indicator = match m.role.as_str() {
+                    "tool_call" => Span::styled("⚙", Style::default().fg(t.tool_call).add_modifier(Modifier::DIM)),
+                    "tool_result" => Span::styled("↳", Style::default().fg(t.tool_result).add_modifier(Modifier::DIM)),
+                    _ => Span::raw(""),
+                };
+
+                let mut lines = vec![Line::from(vec![bar.clone(), spinner, role_indicator, pad])];
 
                 // Optional timestamp
                 if self.show_timestamps {
@@ -3004,6 +3021,9 @@ impl TuiApp {
                         ]));
                     }
                 }
+
+                // Spacer between messages
+                lines.push(Line::from(vec![bar, Span::raw("")]));
 
                 // Age-based fade-in: new messages start dimmed, fade over 10 frames
                 let fade_mod = if m.age < 10 {

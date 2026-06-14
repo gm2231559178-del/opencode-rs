@@ -96,9 +96,11 @@ This creates subtle inconsistency — some dialogs have a maximum size, others d
 
 | Aspect | opencode-rs | opencode |
 |--------|------------|----------|
-| Left border | `▎` marker bar in role color | `SplitBorder` (┃) on left |
+| Left border | `▎` marker bar in role color + role indicator (`⚙`/`↳`) for tool messages | `SplitBorder` (┃) on left |
 | Background per role | 2 variants: `backgroundPanel` (user) vs `bg` (all others) | Consistent `backgroundPanel`, `backgroundElement` on hover |
-| Spacing | No margin between messages | `marginTop={1}`, `marginTop={0}` for first |
+| Spacing | Margin via blank `▎` line between messages | `marginTop={1}`, `marginTop={0}` for first |
+| Collapse behavior | Long tool results (>200 chars) auto-collapsed at creation with smart preview | Default collapsed, expand on click |
+| Role indicators | `⚙` / `↳` symbols in left border for tool_call / tool_result | Inline header labels |
 | Role colors | 5 distinct border colors | Border colored by agent color (user), muted (assistant) |
 | File attachments | Plain text inline | Two-tone pill badges with type + filename |
 | Tool variants | Uniform rendering for all tools | 15+ tool-specific icons/layouts/expand patterns |
@@ -142,9 +144,9 @@ This creates subtle inconsistency — some dialogs have a maximum size, others d
 |--------|------------|----------|
 | Structure | Single line: `PLAN │ LEADER │ agent │ model│ status | ctx%` | Two-part: session footer (path + status dots) + prompt footer (agent/model/provider/variant + cost) |
 | Separators | `│` in `t.border` | `·` in muted |
-| Status icons | Text labels: `streaming`/`idle` | Symbol icons: `●`/`○`/`△`/`⊙` |
+| Status icons | Symbols: `●`/`○` for streaming/idle + `△ perm` for pending permission | Symbol icons: `●`/`○`/`△`/`⊙` |
 | Background | `t.background_menu` | Theme default |
-| **Gap** | **No semantic status symbols**; single-line overloaded bar | Dual-footer with richer iconography |
+| **Gap** | **Single-line overloaded bar (narrow screen issue)**; missing `⊙` MCP symbol | Dual-footer with richer iconography |
 
 ---
 
@@ -173,5 +175,6 @@ This creates subtle inconsistency — some dialogs have a maximum size, others d
 | **Medium** | Footer overloads single line, lacks semantic icons | Information hierarchy unclear | ✅ Fixed |
 | **Medium** | No spacing constants — ad-hoc throughout | Layout breaks unpredictably at different terminal sizes | ✅ Fixed |
 | **Medium** | `selectedListItemText` token ignored by dialogs | Theme token exists but unused in primary selection | ✅ Fixed |
+| **Medium** | Message rendering: no spacing between messages, no tool role indicators, long tool results shown expanded | Cluttered output, hard to scan tool use at a glance | ✅ Fixed |
 | **Low** | `thinking_opacity` is dead code | Theme bloat with no behavioral effect | ✅ Fixed |
 | **Low** | `dialog_area` vs `centered_rect` divergence | Minor positioning inconsistency on small terminals | ✅ Fixed |
