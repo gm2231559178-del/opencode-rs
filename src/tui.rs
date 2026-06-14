@@ -490,16 +490,11 @@ impl TuiApp {
                         if self.notify {
                             send_notification("OpenCode Error", &message);
                         }
-                        let updated = self.messages.iter_mut().rev().find(|m| m.role == "assistant");
-                        if let Some(msg) = updated {
-                            msg.content = format!("Error: {}", message);
-                        } else {
-                            self.messages.push(TuiMessage {
+                        self.messages.push(TuiMessage {
             age: 0, timestamp: chrono::Utc::now(),
-                                role: "assistant".to_string(),
-                                content: format!("Error: {}", message),
-                            });
-                        }
+                            role: "error".to_string(),
+                            content: message,
+                        });
                         self.pending_response.clear();
                         done = true;
                     }
@@ -2993,11 +2988,13 @@ impl TuiApp {
                     "reasoning" => t.text_muted,
                     "tool_call" => t.tool_call,
                     "tool_result" => t.tool_result,
+                    "error" => t.error,
                     _ => t.border,
                 };
 
                 let bg_color = match m.role.as_str() {
                     "user" => t.background_panel,
+                    "error" => t.background_panel,
                     _ => t.bg,
                 };
 
@@ -3032,6 +3029,7 @@ impl TuiApp {
                 let role_indicator = match m.role.as_str() {
                     "tool_call" => Span::styled("⚙", Style::default().fg(t.tool_call).add_modifier(Modifier::DIM)),
                     "tool_result" => Span::styled("↳", Style::default().fg(t.tool_result).add_modifier(Modifier::DIM)),
+                    "error" => Span::styled("✗", Style::default().fg(t.error).add_modifier(Modifier::BOLD)),
                     _ => Span::raw(""),
                 };
 
@@ -3048,7 +3046,7 @@ impl TuiApp {
                 }
 
                 let content_width = w.saturating_sub(4);
-                if m.role == "assistant" || m.role == "reasoning" || m.role == "tool_result" || m.role == "tool_call" {
+                if m.role == "assistant" || m.role == "reasoning" || m.role == "tool_result" || m.role == "tool_call" || m.role == "error" {
                     Self::render_highlighted(&display_content, content_width, &mut lines, t);
                 } else {
                     let wrapped = textwrap::fill(&display_content, content_width);
