@@ -222,6 +222,37 @@ impl TuiApp {
         terminal.backend_mut().execute(LeaveAlternateScreen)?;
         terminal.show_cursor()?;
 
+        // Print session epilogue
+        if let Ok(session) = self.session.try_lock() {
+            let stats = &session.stats;
+            let epilogue = format!(
+                "\n\
+                 ═══════════════════════════════════════\n\
+                  Session Summary\n\
+                 ═══════════════════════════════════════\n\
+                  Session ID    │ {}\n\
+                  Model         │ {}\n\
+                  Prompts       │ {}\n\
+                  Tool calls    │ {}\n\
+                  Files changed │ {}\n\
+                  Prompt tokens │ {}\n\
+                  Output tokens  │ {}\n\
+                  Total tokens  │ {}\n\
+                  Session cost  │ ${:.5}\n\
+                 ═══════════════════════════════════════\n",
+                &session.id[..session.id.len().min(8)],
+                session.model,
+                stats.prompt_count,
+                stats.tool_call_count,
+                self.modified_files.len(),
+                stats.prompt_tokens,
+                stats.completion_tokens,
+                stats.total_tokens,
+                self.session_cost,
+            );
+            println!("{}", epilogue);
+        }
+
         result
     }
 

@@ -73,7 +73,7 @@
 - `[x]` **Review marking** — `m` key to mute/mark files as reviewed
 - `[ ]` **File navigation** — `n` / `p` cycles through files
 - `[x]` **Source switching** — toggle between working tree and last turn diffs
-- `[ ]` **Wrap mode config** — configurable word/char wrap for diffs
+- `[x]` **Wrap mode config** — configurable word/char wrap for diffs
 
 ---
 
