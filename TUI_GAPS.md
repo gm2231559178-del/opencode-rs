@@ -72,7 +72,7 @@
 - `[x]` **File tree sidebar** — directory hierarchy for multi-file diffs
 - `[ ]` **Review marking** — `m` key to mute/mark files as reviewed
 - `[ ]` **File navigation** — `n` / `p` cycles through files
-- `[ ]` **Source switching** — toggle between working tree and last turn diffs
+- `[x]` **Source switching** — toggle between working tree and last turn diffs
 - `[ ]` **Wrap mode config** — configurable word/char wrap for diffs
 
 ---

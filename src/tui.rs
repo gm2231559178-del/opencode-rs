@@ -74,6 +74,7 @@ pub struct TuiApp {
     pub scroll_speed: usize,
     pub diff_style: String,
     pub diff_source: String,  // "working_tree" or "last_turn"
+    pub reviewed_files: std::collections::HashSet<String>,
     pub quit: bool,
     pub stream_rx: Option<mpsc::Receiver<StreamEvent>>,
     pub pending_response: String,
@@ -158,6 +159,7 @@ impl TuiApp {
             scroll_speed,
             diff_style,
             diff_source,
+            reviewed_files: std::collections::HashSet::new(),
             quit: false,
             stream_rx: None,
             pending_response: String::new(),
@@ -1913,6 +1915,28 @@ impl TuiApp {
                         }
                     }
                 }
+                KeyCode::Char('m') => {
+                    // Toggle review mark on current file
+                    if let Some((ref lines, ref scroll, _)) = self.diff_viewer {
+                        let file_positions: Vec<&str> = lines.iter()
+                            .filter(|l| l.starts_with("--- a/"))
+                            .filter_map(|l| l.strip_prefix("--- a/"))
+                            .collect();
+                        let current = file_positions.iter().rev()
+                            .find(|path| {
+                                let pos = lines.iter().position(|l| l.starts_with("--- a/") && l.contains(**path));
+                                pos.map_or(false, |p| p <= *scroll)
+                            });
+                        if let Some(file_path) = current {
+                            let path = file_path.to_string();
+                            if self.reviewed_files.contains(&path) {
+                                self.reviewed_files.remove(&path);
+                            } else {
+                                self.reviewed_files.insert(path);
+                            }
+                        }
+                    }
+                }
                 _ => {}
             }
             return Ok(());
@@ -2566,7 +2590,7 @@ impl TuiApp {
             ""
         };
         let status_line = format!(
-            " ↑↓/PgUp/PgDn scroll  [ ] hunk jump  v toggle view  s toggle source{} Esc close | {}",
+            " ↑↓/PgUp/PgDn scroll  [ ] hunk jump  v toggle view  s toggle source{} m mark  Esc close | {}",
             file_hint, current_file,
         );
 
@@ -2635,18 +2659,30 @@ impl TuiApp {
                         .filter(|(p, _)| *p > *pos && *p <= scroll)
                         .next()
                         .is_none();
-                    let (fg, bg) = if is_active {
+                    let reviewed = self.reviewed_files.contains(*path);
+                    let (fg, bg) = if reviewed {
+                        (t.success, t.background_element)
+                    } else if is_active {
                         (t.selected_list_item_text, t.background_panel)
                     } else {
                         (t.text, t.background_element)
                     };
+                    let marker = if reviewed {
+                        " ✓ "
+                    } else if is_active {
+                        " > "
+                    } else {
+                        "   "
+                    };
                     let file_name = path.rsplit('/').next().unwrap_or(path);
                     ListItem::new(Line::from(vec![
+                        Span::styled(marker, Style::default().fg(t.primary)),
                         Span::styled(
-                            if is_active { " > " } else { "   " },
-                            Style::default().fg(t.primary),
+                            file_name.to_string(),
+                            Style::default().fg(fg).bg(bg).add_modifier(
+                                if reviewed { Modifier::DIM } else { Modifier::empty() }
+                            ),
                         ),
-                        Span::styled(file_name.to_string(), Style::default().fg(fg).bg(bg)),
                     ]))
                 })
                 .collect();
