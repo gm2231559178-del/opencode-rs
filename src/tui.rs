@@ -1677,46 +1677,49 @@ impl TuiApp {
             Some(pos) => {
                 let query = before_cursor[pos + 1..].to_string();
                 let file_query = query.split('#').next().unwrap_or(&query).to_string();
+                let lower_q = file_query.to_lowercase();
 
                 // File candidates via fd
                 let mut candidates: Vec<String> = Vec::new();
-                let pattern = if file_query.is_empty() {
-                    "*".to_string()
-                } else {
-                    format!("*{}*", file_query)
-                };
-                let mut cmd = std::process::Command::new("fd");
-                cmd.arg("--glob").arg(&pattern).arg("--max-results").arg("20");
-                if let Ok(session) = self.session.try_lock() {
-                    cmd.current_dir(&session.cwd);
-                }
-                let output = cmd.output().ok();
-                let mut file_candidates: Vec<String> = output
-                    .and_then(|o| String::from_utf8(o.stdout).ok())
-                    .map(|s| s.lines().map(|l| l.to_string()).collect())
-                    .unwrap_or_default();
-                if !file_query.is_empty() {
-                    file_candidates.sort_by_key(|c| {
-                        let lower_c = c.to_lowercase();
-                        let lower_q = file_query.to_lowercase();
-                        lower_c.find(&lower_q).unwrap_or(usize::MAX)
-                    });
-                }
-                for c in &mut file_candidates {
-                    let path = std::path::Path::new(c);
-                    if path.is_dir() {
-                        c.push('/');
+                if !file_query.starts_with("ref:") {
+                    let pattern = if file_query.is_empty() {
+                        "*".to_string()
+                    } else {
+                        format!("*{}*", file_query)
+                    };
+                    let mut cmd = std::process::Command::new("fd");
+                    cmd.arg("--glob").arg(&pattern).arg("--max-results").arg("20");
+                    if let Ok(session) = self.session.try_lock() {
+                        cmd.current_dir(&session.cwd);
                     }
+                    let output = cmd.output().ok();
+                    let mut file_candidates: Vec<String> = output
+                        .and_then(|o| String::from_utf8(o.stdout).ok())
+                        .map(|s| s.lines().map(|l| l.to_string()).collect())
+                        .unwrap_or_default();
+                    if !file_query.is_empty() {
+                        file_candidates.sort_by_key(|c| {
+                            let lower_c = c.to_lowercase();
+                            // Prefer prefix matches over substring matches
+                            let prefix_score = if lower_c.starts_with(&lower_q) { 0 } else { 100 };
+                            let pos = lower_c.find(&lower_q).unwrap_or(usize::MAX);
+                            prefix_score + pos
+                        });
+                    }
+                    for c in &mut file_candidates {
+                        let path = std::path::Path::new(c);
+                        if path.is_dir() {
+                            c.push('/');
+                        }
+                    }
+                    candidates.extend(file_candidates);
                 }
 
                 // Reference candidates
                 let ref_candidates: Vec<String> = self.references.iter()
-                    .filter(|r| r.name.to_lowercase().contains(&file_query.to_lowercase()))
+                    .filter(|r| r.name.to_lowercase().contains(&lower_q))
                     .map(|r| format!("ref:{}", r.name))
                     .collect();
-
-                // Combine: files first, then references
-                candidates.extend(file_candidates);
                 candidates.extend(ref_candidates);
 
                 self.autocomplete_candidates = candidates;
@@ -2692,7 +2695,7 @@ impl TuiApp {
         let hr_style = Style::default().fg(theme.markdown_horizontal_rule).add_modifier(Modifier::DIM);
         let list_style = Style::default().fg(theme.markdown_list_item);
         let enum_style = Style::default().fg(theme.markdown_list_enumeration);
-        let code_block_style = Style::default().fg(theme.markdown_code_block);
+        let _code_block_style = Style::default().fg(theme.markdown_code_block);
         let diff_add = Style::default().fg(theme.diff_add).add_modifier(Modifier::DIM);
         let diff_del = Style::default().fg(theme.diff_del).add_modifier(Modifier::DIM);
         let diff_hunk = Style::default().fg(theme.diff_hunk).add_modifier(Modifier::DIM);
@@ -2808,7 +2811,7 @@ impl TuiApp {
     }
 
     fn render_markdown_line(line: &str, width: usize, out: &mut Vec<Line>,
-        text_style: Style, code_style: Style, link_style: Style, link_text_style: Style,
+        _text_style: Style, code_style: Style, _link_style: Style, _link_text_style: Style,
         emph_style: Style, strong_style: Style) {
         let wrapped = textwrap::fill(line, width as usize);
         for wl in wrapped.lines() {
@@ -2891,7 +2894,7 @@ impl TuiApp {
             return Vec::new();
         }
 
-        let fn_style = Style::default().fg(theme.syntax_function);
+        let _fn_style = Style::default().fg(theme.syntax_function);
         let kw_style = Style::default().fg(theme.syntax_keyword);
         let str_style = Style::default().fg(theme.syntax_string);
         let comment_style = Style::default().fg(theme.syntax_comment);
@@ -3121,18 +3124,24 @@ impl TuiApp {
     fn render_autocomplete_popup(&self, f: &mut Frame, area: Rect, candidates: &[String], idx: isize) {
         let t = &self.theme;
         let is_slash = self.input.starts_with('/') && !self.input.contains(' ');
-        let header = if is_slash { " Commands " } else { " @ Files " };
+        let header = if is_slash { " Commands " } else { " @ Files & Refs " };
 
         let items: Vec<Line> = candidates
             .iter()
             .enumerate()
             .map(|(i, c)| {
-                let (icon, name) = if let Some(r) = c.strip_prefix("ref:") {
-                    (" ~ ", r)
+                let (icon, name, icon_color) = if let Some(r) = c.strip_prefix("ref:") {
+                    (" ≡ ", r, t.secondary)
                 } else if is_slash {
-                    (" / ", c.as_str())
+                    (" / ", c.as_str(), t.accent)
                 } else {
-                    (" > ", c.as_str())
+                    // Check if it's a directory
+                    let path = std::path::Path::new(c);
+                    if path.is_dir() {
+                        (" + ", c.as_str(), t.primary)
+                    } else {
+                        (" > ", c.as_str(), t.tool_call)
+                    }
                 };
                 let selected = i as isize == idx;
                 let style = if selected {
@@ -3142,7 +3151,7 @@ impl TuiApp {
                 };
                 let dim = if selected { Modifier::empty() } else { Modifier::DIM };
                 Line::from(vec![
-                    Span::styled(icon, style.add_modifier(dim)),
+                    Span::styled(icon, Style::default().fg(icon_color).add_modifier(dim)),
                     Span::styled(name, style.add_modifier(dim)),
                 ])
             })
