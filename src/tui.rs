@@ -72,6 +72,7 @@ pub struct TuiApp {
     pub scroll: usize,
     pub scroll_accel: u32,
     pub scroll_speed: usize,
+    pub diff_style: String,
     pub quit: bool,
     pub stream_rx: Option<mpsc::Receiver<StreamEvent>>,
     pub pending_response: String,
@@ -97,7 +98,7 @@ pub struct TuiApp {
     pub show_timestamps: bool,
     pub leader_mode: bool,
     pub file_watcher_rx: Option<std_mpsc::Receiver<String>>,
-    pub diff_viewer: Option<(Vec<String>, usize)>,  // (lines, scroll_offset)
+    pub diff_viewer: Option<(Vec<String>, usize, String)>,  // (lines, scroll_offset, style)
     pub dialog: Option<ActiveDialog>,
     pub dialog_stack: Vec<ActiveDialog>,
     pub references: Vec<crate::reference::ReferenceInfo>,
@@ -141,6 +142,7 @@ impl TuiApp {
             &home,
         );
         let scroll_speed = session.config.scroll_speed.unwrap_or(10);
+        let diff_style = session.config.diff_style.clone().unwrap_or_else(|| "unified".to_string());
         Self {
             session: Arc::new(Mutex::new(session)),
             messages: Vec::new(),
@@ -152,6 +154,7 @@ impl TuiApp {
             scroll: 0,
             scroll_accel: 1,
             scroll_speed,
+            diff_style,
             quit: false,
             stream_rx: None,
             pending_response: String::new(),
@@ -1390,7 +1393,7 @@ impl TuiApp {
                         let diff = s.show_diff();
                         if diff.starts_with("---") {
                             let lines: Vec<String> = diff.lines().map(|l| l.to_string()).collect();
-                            self.diff_viewer = Some((lines, 0));
+                            self.diff_viewer = Some((lines, 0, self.diff_style.clone()));
                             String::new()
                         } else {
                             diff
@@ -1856,6 +1859,16 @@ impl TuiApp {
                     // Jump to next hunk
                     if let Some(&pos) = hunk_positions.iter().find(|&&p| p > scroll) {
                         self.diff_viewer.as_mut().map(|v| v.1 = pos);
+                    }
+                }
+                KeyCode::Char('v') => {
+                    // Toggle diff style
+                    if let Some(ref mut viewer) = self.diff_viewer {
+                        viewer.2 = if viewer.2 == "unified" {
+                            "side_by_side".to_string()
+                        } else {
+                            "unified".to_string()
+                        };
                     }
                 }
                 _ => {}
@@ -2467,7 +2480,7 @@ impl TuiApp {
     }
 
     fn render_diff_viewer(&mut self, f: &mut Frame) {
-        let (lines, scroll) = match &self.diff_viewer {
+        let (lines, scroll, style) = match &self.diff_viewer {
             Some(v) => v,
             None => return,
         };
@@ -2487,8 +2500,9 @@ impl TuiApp {
 
         let line_num_width = if total >= 10000 { 5 } else if total >= 1000 { 4 } else if total >= 100 { 3 } else if total >= 10 { 2 } else { 1 };
 
-        let title = format!(" Diff Viewer [{} lines, {} hunks] ", total, hunk_positions.len());
-        let status_line = format!(" ↑↓/PgUp/PgDn scroll  [ ] hunk jump  Esc close ");
+        let style_label = if style == "side_by_side" { "split" } else { "unified" };
+        let title = format!(" Diff Viewer [{} lines, {} hunks] [{}] ", total, hunk_positions.len(), style_label);
+        let status_line = format!(" ↑↓/PgUp/PgDn scroll  [ ] hunk jump  v toggle view  Esc close ");
 
         let items: Vec<ListItem> = visible
             .iter()

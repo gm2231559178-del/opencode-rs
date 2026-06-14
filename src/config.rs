@@ -75,6 +75,8 @@ pub struct Config {
     pub plugin: HashMap<String, PluginConfig>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scroll_speed: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diff_style: Option<String>,
 }
 
 pub fn load_config() -> Result<Config> {
@@ -239,6 +241,7 @@ fn merge_config(base: Config, overlay: Config) -> Config {
             merged
         },
         scroll_speed: overlay.scroll_speed.or(base.scroll_speed),
+        diff_style: overlay.diff_style.or(base.diff_style),
     }
 }
 

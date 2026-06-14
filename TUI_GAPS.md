@@ -67,7 +67,7 @@
 - `[x]` **Hunk navigation** — `[` / `]` jumps between diff hunks
 - `[x]` **Per-type line number backgrounds** — use diff added/removed line number bg colors
 - `[x]` **Status bar** — keyboard shortcut hints at bottom
-- `[ ]` **Inline diff rendering** — render diffs inside the message flow (not just full-screen overlay)
+- `[x]` **Inline diff rendering** — render diffs inside the message flow (not just full-screen overlay)
 - `[ ]` **Split/unified view toggle** — add `diff_style` config (auto/stacked) and keybinding toggle
 - `[ ]` **File tree sidebar** — directory hierarchy for multi-file diffs
 - `[ ]` **Review marking** — `m` key to mute/mark files as reviewed
