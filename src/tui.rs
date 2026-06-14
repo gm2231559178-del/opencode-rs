@@ -1861,6 +1861,21 @@ impl TuiApp {
                         self.diff_viewer.as_mut().map(|v| v.1 = pos);
                     }
                 }
+                KeyCode::Char('n') | KeyCode::Char('p') => {
+                    if let Some((ref lines, ref mut scroll, _)) = self.diff_viewer {
+                        let file_positions: Vec<usize> = lines.iter().enumerate()
+                            .filter(|(_, l)| l.starts_with("--- a/"))
+                            .map(|(i, _)| i)
+                            .collect();
+                        if key.code == KeyCode::Char('n') {
+                            if let Some(&pos) = file_positions.iter().find(|&&p| p > *scroll) {
+                                *scroll = pos;
+                            }
+                        } else if let Some(&pos) = file_positions.iter().rev().find(|&&p| p < *scroll) {
+                            *scroll = pos;
+                        }
+                    }
+                }
                 KeyCode::Char('v') => {
                     // Toggle diff style
                     if let Some(ref mut viewer) = self.diff_viewer {
@@ -2487,7 +2502,14 @@ impl TuiApp {
         let t = &self.theme;
         let area = f.area();
 
-        // Find hunk positions for navigation
+        // Find hunk and file positions for navigation
+        let file_positions: Vec<(usize, &str)> = lines.iter().enumerate()
+            .filter(|(_, l)| l.starts_with("--- a/"))
+            .filter_map(|(i, l)| {
+                l.strip_prefix("--- a/").map(|path| (i, path))
+            })
+            .collect();
+
         let hunk_positions: Vec<usize> = lines.iter().enumerate()
             .filter(|(_, l)| l.starts_with("@@"))
             .map(|(i, _)| i)
@@ -2500,9 +2522,37 @@ impl TuiApp {
 
         let line_num_width = if total >= 10000 { 5 } else if total >= 1000 { 4 } else if total >= 100 { 3 } else if total >= 10 { 2 } else { 1 };
 
+        // Identify current file
+        let current_file = file_positions.iter().rev()
+            .find(|(pos, _)| *pos <= scroll)
+            .map(|(_, path)| *path)
+            .unwrap_or("");
+
         let style_label = if style == "side_by_side" { "split" } else { "unified" };
-        let title = format!(" Diff Viewer [{} lines, {} hunks] [{}] ", total, hunk_positions.len(), style_label);
-        let status_line = format!(" ↑↓/PgUp/PgDn scroll  [ ] hunk jump  v toggle view  Esc close ");
+        let title = format!(
+            " Diff Viewer [{} lines, {} files, {} hunks] [{}] ",
+            total, file_positions.len(), hunk_positions.len(), style_label,
+        );
+        let file_hint = if file_positions.len() > 1 {
+            " n/p prev/next file  "
+        } else {
+            ""
+        };
+        let status_line = format!(
+            " ↑↓/PgUp/PgDn scroll  [ ] hunk jump  v toggle view{} Esc close | {}",
+            file_hint, current_file,
+        );
+
+        // Split area into sidebar + content if multiple files
+        let (sidebar_area, content_area) = if file_positions.len() > 1 {
+            let horiz = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Length(28), Constraint::Min(1)])
+                .split(area);
+            (horiz[0], horiz[1])
+        } else {
+            (Rect::default(), area)
+        };
 
         let items: Vec<ListItem> = visible
             .iter()
@@ -2548,7 +2598,42 @@ impl TuiApp {
                 .border_style(Style::default().fg(t.primary)),
         );
 
-        f.render_widget(list, area);
+        f.render_widget(list, content_area);
+
+        // File tree sidebar
+        if file_positions.len() > 1 {
+            let sidebar_items: Vec<ListItem> = file_positions.iter()
+                .map(|(pos, path)| {
+                    let is_active = *pos <= scroll && file_positions.iter()
+                        .filter(|(p, _)| *p > *pos && *p <= scroll)
+                        .next()
+                        .is_none();
+                    let (fg, bg) = if is_active {
+                        (t.selected_list_item_text, t.background_panel)
+                    } else {
+                        (t.text, t.background_element)
+                    };
+                    let file_name = path.rsplit('/').next().unwrap_or(path);
+                    ListItem::new(Line::from(vec![
+                        Span::styled(
+                            if is_active { " > " } else { "   " },
+                            Style::default().fg(t.primary),
+                        ),
+                        Span::styled(file_name.to_string(), Style::default().fg(fg).bg(bg)),
+                    ]))
+                })
+                .collect();
+
+            let sidebar_widget = List::new(sidebar_items)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title(" Files ")
+                        .border_style(Style::default().fg(t.border)),
+                )
+                .style(Style::default().bg(t.background_element));
+            f.render_widget(sidebar_widget, sidebar_area);
+        }
     }
 
     fn render_toast_overlay(&self, f: &mut Frame, area: Rect, msg: &str) {
@@ -3039,7 +3124,7 @@ impl TuiApp {
     }
 
     fn render_code_block(code: &str, width: usize, lang: &str, out: &mut Vec<Line>, theme: &Theme) {
-        let context_style = Style::default().fg(theme.diff_context).bg(theme.diff_context_bg);
+        let _context_style = Style::default().fg(theme.diff_context).bg(theme.diff_context_bg);
         let _code_style = Style::default().fg(theme.dim).add_modifier(Modifier::DIM);
         let diff_add = Style::default().fg(theme.diff_add).bg(theme.diff_add_bg).add_modifier(Modifier::DIM);
         let diff_del = Style::default().fg(theme.diff_del).bg(theme.diff_del_bg).add_modifier(Modifier::DIM);

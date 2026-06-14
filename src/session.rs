@@ -568,45 +568,68 @@ impl Session {
     }
 
     pub fn show_diff(&self) -> String {
-        let entry = match self.snapshots.last() {
-            Some(e) => e,
-            None => return "No edits to diff.".to_string(),
-        };
-        let old = match &entry.original_content {
-            Some(c) => c.clone(),
-            None => return format!("Diff for new file: {}", entry.file_path),
-        };
-        let new = match std::fs::read_to_string(&entry.file_path) {
-            Ok(c) => c,
-            Err(e) => return format!("Cannot read file: {}", e),
-        };
-        if old == new {
-            return format!("No changes to {}", entry.file_path);
+        if self.snapshots.is_empty() {
+            return "No edits to diff.".to_string();
         }
-        let mut out = format!("--- a/{}\n+++ b/{}\n", entry.file_path, entry.file_path);
-        let old_lines: Vec<&str> = old.lines().collect();
-        let new_lines: Vec<&str> = new.lines().collect();
-        let mut i = 0;
-        let mut j = 0;
+        let mut out = String::new();
 
-        // Simple Myers-like diff: walk lines, output +/- prefix
-        while i < old_lines.len() || j < new_lines.len() {
-            if i < old_lines.len() && j < new_lines.len() && old_lines[i] == new_lines[j] {
-                out.push_str(&format!(" {}\n", old_lines[i]));
-                i += 1;
-                j += 1;
-            } else if i < old_lines.len() && j < new_lines.len() {
-                out.push_str(&format!("-{}\n+{}\n", old_lines[i], new_lines[j]));
-                i += 1;
-                j += 1;
-            } else if i < old_lines.len() {
-                out.push_str(&format!("-{}\n", old_lines[i]));
-                i += 1;
-            } else {
-                out.push_str(&format!("+{}\n", new_lines[j]));
-                j += 1;
+        // Diff across all unique files
+        let mut seen = std::collections::HashSet::new();
+        for entry in &self.snapshots {
+            if entry.file_path.is_empty() || seen.contains(&entry.file_path) {
+                continue;
+            }
+            seen.insert(entry.file_path.clone());
+
+            let old = match &entry.original_content {
+                Some(c) => c.clone(),
+                None => {
+                    out.push_str(&format!("--- /dev/null\n+++ b/{}\n", entry.file_path));
+                    if let Ok(new) = std::fs::read_to_string(&entry.file_path) {
+                        for (j, nl) in new.lines().enumerate() {
+                            let hunk = format!("@@ -0,0 +{},{}, @@\n", j + 1, new.lines().count());
+                            out.push_str(&hunk);
+                            out.push_str(&format!("+{}\n", nl));
+                        }
+                    }
+                    continue;
+                }
+            };
+            let new = match std::fs::read_to_string(&entry.file_path) {
+                Ok(c) => c,
+                Err(e) => {
+                    out.push_str(&format!("Cannot read {}: {}\n", entry.file_path, e));
+                    continue;
+                }
+            };
+            if old == new { continue; }
+
+            out.push_str(&format!("--- a/{}\n+++ b/{}\n", entry.file_path, entry.file_path));
+            let old_lines: Vec<&str> = old.lines().collect();
+            let new_lines: Vec<&str> = new.lines().collect();
+            let mut i = 0;
+            let mut j = 0;
+
+            while i < old_lines.len() || j < new_lines.len() {
+                if i < old_lines.len() && j < new_lines.len() && old_lines[i] == new_lines[j] {
+                    out.push_str(&format!(" {}\n", old_lines[i]));
+                    i += 1;
+                    j += 1;
+                } else if i < old_lines.len() && j < new_lines.len() {
+                    out.push_str(&format!("-{}\n+{}\n", old_lines[i], new_lines[j]));
+                    i += 1;
+                    j += 1;
+                } else if i < old_lines.len() {
+                    out.push_str(&format!("-{}\n", old_lines[i]));
+                    i += 1;
+                } else {
+                    out.push_str(&format!("+{}\n", new_lines[j]));
+                    j += 1;
+                }
             }
         }
+
+        if out.is_empty() { return "No changes detected.".to_string(); }
         out
     }
 
