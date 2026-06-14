@@ -2544,8 +2544,14 @@ impl TuiApp {
             format!(" {} ", self.model_name),
             Style::default().fg(t.primary).add_modifier(Modifier::BOLD),
         );
+        let input_len = self.input.len();
+        let char_info = if input_len > 0 {
+            format!(" {} chars", input_len)
+        } else {
+            String::new()
+        };
         let right = Span::styled(
-            format!(" {}:{} | {} ", self.theme_name, self.prompt_count, status),
+            format!(" {}:{} {} | {} ", self.theme_name, self.prompt_count, char_info, status),
             Style::default().fg(if self.streaming { t.success } else { t.text_muted }),
         );
         let mut spans = vec![left, Span::styled(" │ ", Style::default().fg(t.border)), right];
@@ -3187,13 +3193,21 @@ impl TuiApp {
 
         f.render_widget(outer_block, area);
 
-        let input = Paragraph::new(self.input.as_str())
-            .style(Style::default().fg(t.text).bg(t.background_element))
-            .wrap(Wrap { trim: true });
+        // Show placeholder text if input is empty and not in leader mode
+        if self.input.is_empty() && !self.leader_mode {
+            let placeholder = Paragraph::new(Span::styled(
+                " Type a message or / for commands...",
+                Style::default().fg(t.text_dim).bg(t.background_element),
+            ));
+            f.render_widget(placeholder, chunks[0]);
+        } else {
+            let input = Paragraph::new(self.input.as_str())
+                .style(Style::default().fg(t.text).bg(t.background_element))
+                .wrap(Wrap { trim: true });
+            f.render_widget(input, chunks[0]);
+        }
 
-        f.render_widget(input, chunks[0]);
-
-        let cursor_pos = self.input.len() as u16;
+        let cursor_pos = self.cursor.min(self.input.len()) as u16;
         f.set_cursor_position((chunks[0].x + cursor_pos + 1, chunks[0].y + 1));
 
         // Render status inside the input box
