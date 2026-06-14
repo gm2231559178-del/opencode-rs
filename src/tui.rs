@@ -2822,7 +2822,7 @@ impl TuiApp {
             String::new()
         };
         let right = Span::styled(
-            format!(" {}:{} {} | {} {} ", self.theme_name, self.prompt_count, char_info, status_symbol, if self.streaming { "streaming" } else { "idle" }),
+            format!(" {}:{} {} | {} ", self.theme_name, self.prompt_count, char_info, status_symbol),
             Style::default().fg(if self.streaming { t.success } else { t.text_muted }),
         );
         let mut spans: Vec<Span> = Vec::new();
