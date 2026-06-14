@@ -133,6 +133,15 @@ const SLASH_COMMANDS: &[&str] = &[
     "/stats", "/mcp", "/plugin", "/diagnostics <file>", "/exit",
 ];
 
+// ── Layout constants ────────────────────────────────────
+const SPACING_PADDING: u16 = 2;
+const SIDEBAR_WIDTH: u16 = 36;
+const DIALOG_WIDTH: u16 = 60;
+const DIALOG_HEIGHT: u16 = 40;
+const TOAST_DURATION_NORMAL: u8 = 30;
+const TOAST_DURATION_ERROR: u8 = 60;
+const TOAST_DURATION_LONG: u8 = 80;
+
 impl TuiApp {
     pub fn new(session: Session, store: Option<SessionStore>) -> Self {
         let model_name = session.model.clone();
@@ -467,7 +476,7 @@ impl TuiApp {
                             };
                             if removed > 0 {
                                 self.context_tokens = self.context_tokens / 2;
-                                self.toast = Some((format!("Auto-compacted: removed {} messages", removed), 80, Color::Rgb(0xe9, 0xab, 0x2f)));
+                                self.toast = Some((format!("Auto-compacted: removed {} messages", removed), TOAST_DURATION_LONG, Color::Rgb(0xe9, 0xab, 0x2f)));
                             }
                         }
                     }
@@ -2072,7 +2081,6 @@ impl TuiApp {
                 KeyCode::Char('e') => {
                     self.open_last_edited_file();
                 }
-                KeyCode::Char('q') => { self.quit = true; }
                 KeyCode::Char('w') => {
                     self.push_dialog(ActiveDialog::Workspace);
                 }
@@ -2335,19 +2343,19 @@ impl TuiApp {
 
     fn show_toast(&mut self, msg: String) {
         let color = self.theme.info;
-        self.toast = Some((msg, 30, color));
+        self.toast = Some((msg, TOAST_DURATION_NORMAL, color));
     }
 
     fn show_success_toast(&mut self, msg: String) {
-        self.toast = Some((msg, 30, Color::Rgb(0x22, 0xc5, 0x5e)));
+        self.toast = Some((msg, TOAST_DURATION_NORMAL, Color::Rgb(0x22, 0xc5, 0x5e)));
     }
 
     fn show_warning_toast(&mut self, msg: String) {
-        self.toast = Some((msg, 30, Color::Rgb(0xe9, 0xab, 0x2f)));
+        self.toast = Some((msg, TOAST_DURATION_NORMAL, Color::Rgb(0xe9, 0xab, 0x2f)));
     }
 
     fn show_error_toast(&mut self, msg: String) {
-        self.toast = Some((msg, 60, Color::Rgb(0xef, 0x44, 0x44)));
+        self.toast = Some((msg, TOAST_DURATION_ERROR, Color::Rgb(0xef, 0x44, 0x44)));
     }
 
     fn render(&mut self, f: &mut Frame) {
@@ -2435,12 +2443,12 @@ impl TuiApp {
 
     fn render_sidebar(&self, f: &mut Frame, area: Rect) {
         let t = &self.theme;
-        let inner_area = Rect {
-            x: area.x,
-            y: area.y,
-            width: area.width.min(36),
-            height: area.height,
-        };
+            let inner_area = Rect {
+                x: area.x,
+                y: area.y,
+                width: area.width.min(SIDEBAR_WIDTH),
+                height: area.height,
+            };
 
         // Background panel
         let panel = Block::default()
@@ -3802,8 +3810,6 @@ impl TuiApp {
             "  d  Diff viewer",
             "  e  Open last edited file",
             "  m  Model picker (dialog)",
-            "  a  Agent picker (dialog)",
-            "  q  Quit",
             "",
             "Dialog navigation:",
             "  ↑/k  Previous item    ↓/j  Next item",
@@ -4000,7 +4006,7 @@ impl TuiApp {
     }
 
     fn dialog_area(area: Rect) -> Rect {
-        Self::centered_rect(area, 60, 40.min(area.height))
+        Self::centered_rect(area, DIALOG_WIDTH, DIALOG_HEIGHT.min(area.height))
     }
 
     fn centered_rect(area: Rect, width: u16, height: u16) -> Rect {
