@@ -70,6 +70,8 @@ pub struct TuiApp {
     pub history_index: isize,
     pub saved_input: String,
     pub scroll: usize,
+    pub scroll_accel: u32,
+    pub scroll_speed: usize,
     pub quit: bool,
     pub stream_rx: Option<mpsc::Receiver<StreamEvent>>,
     pub pending_response: String,
@@ -136,6 +138,7 @@ impl TuiApp {
             &session.cwd,
             &home,
         );
+        let scroll_speed = session.config.scroll_speed.unwrap_or(10);
         Self {
             session: Arc::new(Mutex::new(session)),
             messages: Vec::new(),
@@ -145,6 +148,8 @@ impl TuiApp {
             history_index: -1,
             saved_input: String::new(),
             scroll: 0,
+            scroll_accel: 1,
+            scroll_speed,
             quit: false,
             stream_rx: None,
             pending_response: String::new(),
@@ -2152,12 +2157,18 @@ impl TuiApp {
                 }
             }
             KeyCode::PageUp => {
-                self.scroll = self.scroll.saturating_add(10);
+                let step = (self.scroll_speed * self.scroll_accel as usize).min(self.scroll_speed * 8);
+                self.scroll = self.scroll.saturating_add(step);
+                self.scroll_accel = (self.scroll_accel + 1).min(8);
             }
             KeyCode::PageDown => {
-                self.scroll = self.scroll.saturating_sub(10);
+                let step = (self.scroll_speed * self.scroll_accel as usize).min(self.scroll_speed * 8);
+                self.scroll = self.scroll.saturating_sub(step);
+                self.scroll_accel = (self.scroll_accel + 1).min(8);
             }
-            _ => {}
+            _ => {
+                self.scroll_accel = 1;
+            }
         }
         Ok(())
     }

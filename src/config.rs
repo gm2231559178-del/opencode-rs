@@ -73,6 +73,8 @@ pub struct Config {
     pub mcp: HashMap<String, McpServerConfig>,
     #[serde(default)]
     pub plugin: HashMap<String, PluginConfig>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scroll_speed: Option<usize>,
 }
 
 pub fn load_config() -> Result<Config> {
@@ -236,6 +238,7 @@ fn merge_config(base: Config, overlay: Config) -> Config {
             }
             merged
         },
+        scroll_speed: overlay.scroll_speed.or(base.scroll_speed),
     }
 }
 

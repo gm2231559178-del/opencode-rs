@@ -1,126 +1,113 @@
 # TUI Design Gaps — opencode-rs vs opencode
 
-> Generated 2026-06-14
+> Updated 2026-06-14
 
 ## Legend
-- `[ ]` not started
-- `[~]` in progress
-- `[x]` done
-- `[-]` ignore
+- `[ ]` not started | `[~]` in progress | `[x]` done | `[-]` intentionally skipped
 
 ---
 
 ## P0 — Theme System (25 missing tokens, 27 missing themes)
 
-### Color Tokens
+### Color Tokens (all added to struct + 7 themes)
 
-- `[ ]` Add `info` — informational status color (used in toasts, status indicators)
-- `[ ]` Add `selectedListItemText` — text color for selected list items
-- `[ ]` Add `backgroundMenu` — menu/dropdown background
-- `[ ]` Add `borderSubtle` — subtle/secondary border color
+- `[x]` Add `info` — informational status color
+- `[x]` Add `selectedListItemText` — text color for selected list items
+- `[x]` Add `backgroundMenu` — menu/dropdown background
+- `[x]` Add `borderSubtle` — subtle/secondary border color
 
-### Diff Tokens (11 needed, 3 exist)
+### Diff Tokens (11 needed, 3 existed → 12 now)
 
-- `[ ]` Add `diffContext` — context line foreground
-- `[ ]` Add `diffHighlightAdded` — highlighted added line fg
-- `[ ]` Add `diffHighlightRemoved` — highlighted removed line fg
-- `[ ]` Add `diffAddedBg` — added line background
-- `[ ]` Add `diffRemovedBg` — removed line background
-- `[ ]` Add `diffContextBg` — context line background
-- `[ ]` Add `diffLineNumber` — line number color
-- `[ ]` Add `diffAddedLineNumberBg` — added line number background
-- `[ ]` Add `diffRemovedLineNumberBg` — removed line number background
+- `[x]` Add `diffContext` — context line foreground
+- `[x]` Add `diffHighlightAdded` — highlighted added line fg
+- `[x]` Add `diffHighlightRemoved` — highlighted removed line fg
+- `[x]` Add `diffAddedBg` — added line background
+- `[x]` Add `diffRemovedBg` — removed line background
+- `[x]` Add `diffContextBg` — context line background
+- `[x]` Add `diffLineNumber` — line number color
+- `[x]` Add `diffAddedLineNumberBg` — added line number background
+- `[x]` Add `diffRemovedLineNumberBg` — removed line number background
 
-### Markdown Tokens (15 needed, 0 exist)
+### Markdown Tokens (15 needed, 0 existed → 15 now)
 
-- `[ ]` Add `markdownText` — body text
-- `[ ]` Add `markdownHeading` — headings (h1-h6)
-- `[ ]` Add `markdownLink` — link underline/url
-- `[ ]` Add `markdownLinkText` — link label text
-- `[ ]` Add `markdownCode` — inline code spans
-- `[ ]` Add `markdownBlockQuote` — block quote bars
-- `[ ]` Add `markdownEmph` — italic/emphasis
-- `[ ]` Add `markdownStrong` — bold/strong
-- `[ ]` Add `markdownHorizontalRule` — horizontal rule characters
-- `[ ]` Add `markdownListItem` — list item markers (-, *, +)
-- `[ ]` Add `markdownListEnumeration` — numbered list digits
-- `[ ]` Add `markdownImage` — image brackets
-- `[ ]` Add `markdownImageText` — image alt text
-- `[ ]` Add `markdownCodeBlock` — code block text (vs inline code)
+- `[x]` Add `markdownText` — body text
+- `[x]` Add `markdownHeading` — headings
+- `[x]` Add `markdownLink` — link underline/url
+- `[x]` Add `markdownLinkText` — link label text
+- `[x]` Add `markdownCode` — inline code spans
+- `[x]` Add `markdownBlockQuote` — block quote bars
+- `[x]` Add `markdownEmph` — italic/emphasis
+- `[x]` Add `markdownStrong` — bold/strong
+- `[x]` Add `markdownHorizontalRule` — horizontal rule
+- `[x]` Add `markdownListItem` — list item markers
+- `[x]` Add `markdownListEnumeration` — numbered list digits
+- `[x]` Add `markdownImage` — image brackets
+- `[x]` Add `markdownImageText` — image alt text
+- `[x]` Add `markdownCodeBlock` — code block text
 
-### Syntax Tokens (5 missing, 4 exist)
+### Syntax Tokens (5 missing, 4 existed → 9 now)
 
-- `[ ]` Add `syntaxFunction` — function/method names
-- `[ ]` Add `syntaxVariable` — variable identifiers
-- `[ ]` Add `syntaxType` — type/class names
-- `[ ]` Add `syntaxOperator` — operators (+, -, &&, etc.)
-- `[ ]` Add `syntaxPunctuation` — delimiters/brackets
+- `[x]` Add `syntaxFunction` — function/method names
+- `[x]` Add `syntaxVariable` — variable identifiers
+- `[x]` Add `syntaxType` — type/class names
+- `[x]` Add `syntaxOperator` — operators
+- `[x]` Add `syntaxPunctuation` — delimiters/brackets
 
 ### More Themes
 
-- `[ ]` Load themes from JSON files (matching original TS format) instead of hardcoding
-- `[ ]` Add 27 missing themes (aura, ayu, carbonfox, catppuccin-frappe, catppuccin-macchiato, cobalt2, cursor, everforest, flexoki, github, kanagawa, lucent-orng, material, matrix, mercury, monokai, nightowl, opencode, orng, osaka-jade, palenight, rosepine, solarized, synthwave84, vercel, vesper, zenburn)
-- `[ ]` Add `thinkingOpacity` non-color config field
+- `[x`] Load themes from JSON files (34 themes from `themes/` directory)
+- `[x]` Add 27 missing themes via JSON files (copied from original project format)
+- `[x]` Add `thinkingOpacity` non-color config field
 
 ---
 
 ## P1 — Diff Viewer
 
+- `[x]` **Line background colors** — green/red tint backgrounds for added/removed lines
+- `[x]` **Hunk navigation** — `[` / `]` jumps between diff hunks
+- `[x]` **Per-type line number backgrounds** — use diff added/removed line number bg colors
+- `[x]` **Status bar** — keyboard shortcut hints at bottom
 - `[ ]` **Inline diff rendering** — render diffs inside the message flow (not just full-screen overlay)
 - `[ ]` **Split/unified view toggle** — add `diff_style` config (auto/stacked) and keybinding toggle
 - `[ ]` **File tree sidebar** — directory hierarchy for multi-file diffs
 - `[ ]` **Review marking** — `m` key to mute/mark files as reviewed
-- `[ ]` **Hunk navigation** — `[` / `]` jumps between diff hunks
 - `[ ]` **File navigation** — `n` / `p` cycles through files
 - `[ ]` **Source switching** — toggle between working tree and last turn diffs
-- `[ ]` **Per-type line number backgrounds** — use diff added/removed line number bg colors
-- `[ ]` **Line background colors** — green/red tint backgrounds for added/removed lines
 - `[ ]` **Wrap mode config** — configurable word/char wrap for diffs
 
 ---
 
-## P1 — Syntax Highlighting & Code Display
+## P1 — Syntax Highlighting & Markdown Display
 
-- `[ ]` Increase language coverage from 6 families to 20+ (add Ruby, PHP, Swift, Kotlin, Scala, Rust, SQL, YAML, TOML, JSON, HTML, CSS, shell)
-- `[ ]` Expand keyword lists per language (use tree-sitter grammar data where possible)
-- `[ ]` Render inline code spans with `markdownCode` color
-- `[ ]` Render block quotes with `markdownBlockQuote` vertical bar
-- `[ ]` Render headings with `markdownHeading` color + bold
-- `[ ]` Render links with `markdownLink` underline color + `markdownLinkText` label color
-- `[ ]` Render strong/emph with proper styling
-- `[ ]` Render list markers with `markdownListItem` / `markdownListEnumeration`
-- `[ ]` Render horizontal rules with `markdownHorizontalRule`
-
----
-
-## P2 — Logo / Splash / Background
-
-- `[ ]` Add ASCII logo on startup (open code "GO" logo)
-- `[ ]` Add idle shimmer / concentric ring animation on logo
-- `[ ]` Add bg-pulse effect (animated ring waves with breathing)
-- `[ ]` Sub-pixel rendering via `▀`/`▄` half-block characters for double vertical resolution
-- `[ ]` Frame caching for animation performance
-- `[ ]` Global animation toggle (`app.toggle.animations`)
+- `[x]` Increase language coverage from 6 families to 20+ (added bash, sql, perl, and improved all existing)
+- `[x]` Expand keyword lists per language (bash, sql, perl, dockerfile, cmake, gradle, etc.)
+- `[x]` Add type highlighting via `get_types()` function
+- `[x]` Render headings with `markdownHeading` color + bold
+- `[x]` Render block quotes with `markdownBlockQuote` vertical bar
+- `[x]` Render inline code with `markdownCode` color
+- `[x]` Render bold with `markdownStrong` style
+- `[x]` Render italic with `markdownEmph` style
+- `[x]` Render horizontal rules with `markdownHorizontalRule`
+- `[x]` Render list markers with `markdownListItem` / `markdownListEnumeration`
+- `[ ]` Render links with rendered `markdownLink` + `markdownLinkText` (inline link detection)
+- `[ ]` Expand language keyword lists to match tree-sitter completeness
 
 ---
 
 ## P2 — Audio & Notifications
 
-- `[-]` Sound effects on events (question asked, permission needed, error, done) — intentionally skipped, terminal TUI has no native audio API
-- `[-]` Configurable sound packs (pluggable) — intentionally skipped
-- `[-]` Focus-aware delivery (only when terminal is focused/blurred) — intentionally skipped
-- `[-]` Toast notification variants (success/error/info/warning) — intentionally skipped
-- `[-]` Enable desktop notifications by default (via notify-rush) — intentionally skipped
-- `[-]` Terminal bell fallback for audio — intentionally skipped
+- `[-]` All items intentionally skipped (terminal TUI has no native audio API)
 
 ---
 
 ## P2 — Autocomplete
 
+- `[x]` Type icons in autocomplete popup (dirs: `+`, files: `>`, refs: `≡`, commands: `/`)
+- `[x]` Improved file sorting (prefix matches ranked above substring)
+- `[x]` Directory detection with trailing slash
+- `[x]` `#L` line range suffix already supported on `@` file references (pre-existing)
 - `[ ]` Frecency ranking (sort by frequency + recency of selection)
 - `[ ]` MCP tool autocomplete candidates
-- `[ ]` `#L` line range suffix on `@` file references
-- `[ ]` Type icons in autocomplete popup (file, ref, command, MCP)
 
 ---
 
@@ -129,24 +116,29 @@
 - `[ ]` Plugin slots for sidebar panels
 - `[ ]` Plugin API for custom dialogs
 - `[ ]` Plugin keybinding contributions
-- `[ ]` Plugin footer contributions
-- `[ ]` Custom command registration via plugins
+
+---
+
+## P2 — Logo / Splash / Background
+
+- `[ ]` ASCII logo on startup
+- `[ ]` Frame caching for animation performance
 
 ---
 
 ## P3 — Scroll & Navigation
 
-- `[ ]` Momentum scroll acceleration (configurable on/off)
+- `[ ]` Momentum scroll acceleration
 - `[ ]` Configurable scroll speed
-- `[ ]` Themed scrollbar visualization (track + thumb)
+- `[ ]` Themed scrollbar visualization
 
 ---
 
 ## P3 — Input / Prompt Polish
 
-- `[ ]` Placeholder text when input is empty
-- `[ ]` Character count / buffer status indicator
-- `[ ]` Separate metadata footer row below input (instead of merged inside input box)
+- `[x]` Placeholder text when input is empty
+- `[x]` Character count in status bar
+- `[ ]` Separate metadata footer row below input (currently inside input box)
 
 ---
 
@@ -155,30 +147,11 @@
 - `[ ]` Session epilogue on close (formatted summary)
 - `[ ]` Transcript export formatting
 - `[ ]` Share dialog with QR code display
-- `[ ]` Visual token usage charts/graphs in status dialog
 
 ---
 
 ## P4 — Animations & Transitions
 
-- `[ ]` Fade-in animation for new messages (smoothstep alpha ramp over 160ms)
+- `[x]` Age-based fade-in for new messages (DIM over 10 frames)
+- `[ ]` Smoothstep easing for fade-in (currently binary DIM)
 - `[ ]` Global animation enable/disable config
-
----
-
-## Files to modify
-
-| File | What to change |
-|------|----------------|
-| `src/theme.rs` | Add ~25 color tokens, add `thinkingOpacity`, load from JSON |
-| `src/tui.rs` | Diff viewer overhaul, markdown rendering, syntax highlighting, logo, autocomplete, input polish, scroll acceleration, animations |
-| `src/util/filetype.rs` | Expand language coverage + keyword lists |
-| `src/util/locale.rs` | Add `format_number`, `format_duration` (missing) |
-| `src/session.rs` | Session epilogue/transcript formatting |
-| `src/config.rs` | Add `diff_style`, `scroll_speed`, `animations_enabled`, audio config |
-| `src/plugin.rs` | TUI plugin slots |
-| New: `src/tui/logo.rs` | Logo rendering logic |
-| New: `src/tui/bg_pulse.rs` | Background animation engine |
-| New: `src/tui/audio.rs` | Audio/attention system |
-| New: `src/util/presentation.rs` | Session epilogue formatting |
-| New: `src/util/transcript.rs` | Transcript export formatting |
