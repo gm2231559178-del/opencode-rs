@@ -116,7 +116,7 @@ This creates subtle inconsistency — some dialogs have a maximum size, others d
 | Dismiss toast | Auto (6 frames) | Auto (5s) or click |
 | Cancel streaming | `Esc` | `Escape` (double-tap within 5s) |
 | Selection guard | ❌ None — dialogs close even while selecting | ✅ First `Escape` clears selection before dismissing |
-| Quit keys | `Ctrl+C` / `q` — **why both?** | Single convention |
+| Quit keys | `Ctrl+C` / `q` — **why both?** | Single convention (`Ctrl+C` only) |
 
 ### 4.2 Hover/Focus States
 
@@ -150,28 +150,28 @@ This creates subtle inconsistency — some dialogs have a maximum size, others d
 
 ## 6. Inconsistencies Within opencode-rs
 
-1. **Selection highlight**: 3 conventions across 3 components — dialogs (inverted), autocomplete (accent-bg), diff sidebar (`selectedListItemText`)
-2. **Toast duration**: `show_toast()` sets 6 frames, but auto-compact toast hardcodes 80 frames (`tui.rs:470`)
-3. **Dialog widths**: Vary 50–70 without semantic reason
-4. **`dialog_area` vs `centered_rect`**: `dialog_area` caps at 80×40 (`tui.rs:3973`), `centered_rect` does not (`tui.rs:3981`)
-5. **`thinking_opacity`**: Declared in `src/theme.rs:76` but never used in rendering
-6. **`selectedListItemText`**: Defined for selection highlighting (`src/theme.rs:74`) but only used in diff viewer sidebar, not select dialogs
-7. **Quit keys ambiguity**: Both `Ctrl+C` AND `q` close the app — two conventions for the same action
+1. ~~**Selection highlight**: 3 conventions across 3 components~~ ✅ Unified to `selectedListItemText` on `primary` background
+2. ~~**Toast duration**: `show_toast()` sets 6 frames, but auto-compact toast hardcodes 80 frames~~ ✅ Standardized with `TOAST_DURATION_*` constants (30 normal, 60 error, 80 long)
+3. ~~**Dialog widths**: Vary 50–70 without semantic reason~~ ✅ Standardized to 60 (`DIALOG_WIDTH`)
+4. ~~**`dialog_area` vs `centered_rect`**~~ ✅ `dialog_area` now delegates to `centered_rect`
+5. ~~**`thinking_opacity`**: Declared but never used~~ ✅ Wired up via `Modifier::DIM` for reasoning messages
+6. ~~**`selectedListItemText`**: Defined but only used in diff viewer~~ ✅ Now used in select dialogs and autocomplete
+7. ~~**Quit keys ambiguity**: Both `Ctrl+C` AND `q`~~ ✅ Removed `q` quit — only `Ctrl+C`
 
 ---
 
 ## 7. Summary of Priority Actions
 
-| Priority | Gap | Impact |
-|----------|-----|--------|
-| **Critical** | No unified selection highlight convention | Users see different visual feedback in different list contexts |
-| **Critical** | Toast has single variant, no history, too short | Users miss notifications, can't distinguish error from success |
-| **High** | Dialog widths vary arbitrarily (50/60/70) | Visual rhythm broken when switching dialog types |
-| **High** | No backdrop dimming for dialogs | Overlapping content causes visual noise |
-| **High** | No hover/focus state differentiation | Users can't identify interactive vs static elements |
-| **High** | Missing `info` semantic + `permission` indicator | Status reporting is incomplete |
-| **Medium** | Footer overloads single line, lacks semantic icons | Information hierarchy unclear |
-| **Medium** | No spacing constants — ad-hoc throughout | Layout breaks unpredictably at different terminal sizes |
-| **Medium** | `selectedListItemText` token ignored by dialogs | Theme token exists but unused in primary selection |
-| **Low** | `thinking_opacity` is dead code | Theme bloat with no behavioral effect |
-| **Low** | `dialog_area` vs `centered_rect` divergence | Minor positioning inconsistency on small terminals |
+| Priority | Gap | Impact | Status |
+|----------|-----|--------|--------|
+| **Critical** | No unified selection highlight convention | Users see different visual feedback in different list contexts | ✅ Fixed |
+| **Critical** | Toast has single variant, no history, too short | Users miss notifications, can't distinguish error from success | ✅ Fixed |
+| **High** | Dialog widths vary arbitrarily (50/60/70) | Visual rhythm broken when switching dialog types | ✅ Fixed |
+| **High** | No backdrop dimming for dialogs | Overlapping content causes visual noise | ✅ Fixed |
+| **High** | No hover/focus state differentiation | Users can't identify interactive vs static elements | ❌ Open |
+| **High** | Missing `info` semantic + `permission` indicator | Status reporting is incomplete | ✅ Fixed |
+| **Medium** | Footer overloads single line, lacks semantic icons | Information hierarchy unclear | ✅ Fixed |
+| **Medium** | No spacing constants — ad-hoc throughout | Layout breaks unpredictably at different terminal sizes | ✅ Fixed |
+| **Medium** | `selectedListItemText` token ignored by dialogs | Theme token exists but unused in primary selection | ✅ Fixed |
+| **Low** | `thinking_opacity` is dead code | Theme bloat with no behavioral effect | ✅ Fixed |
+| **Low** | `dialog_area` vs `centered_rect` divergence | Minor positioning inconsistency on small terminals | ✅ Fixed |
