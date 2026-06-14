@@ -2657,7 +2657,18 @@ impl TuiApp {
                     }
                 }
 
-                ListItem::new(lines).style(Style::default().bg(bg_color))
+                // Age-based fade-in: new messages start dimmed, fade over 10 frames
+                let fade_mod = if m.age < 10 {
+                    let dim_level = (10 - m.age) as f32 / 10.0;
+                    if dim_level > 0.5 {
+                        Modifier::DIM
+                    } else {
+                        Modifier::empty()
+                    }
+                } else {
+                    Modifier::empty()
+                };
+                ListItem::new(lines).style(Style::default().bg(bg_color).add_modifier(fade_mod))
             })
             .collect();
 
