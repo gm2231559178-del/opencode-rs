@@ -74,6 +74,7 @@ pub struct TuiApp {
     pub scroll_speed: usize,
     pub diff_style: String,
     pub diff_source: String,  // "working_tree" or "last_turn"
+    pub diff_wrap_mode: String,  // "none", "word", or "char"
     pub reviewed_files: std::collections::HashSet<String>,
     pub quit: bool,
     pub stream_rx: Option<mpsc::Receiver<StreamEvent>>,
@@ -146,6 +147,7 @@ impl TuiApp {
         let scroll_speed = session.config.scroll_speed.unwrap_or(10);
         let diff_style = session.config.diff_style.clone().unwrap_or_else(|| "unified".to_string());
         let diff_source = "working_tree".to_string();
+        let diff_wrap_mode = session.config.diff_wrap_mode.clone().unwrap_or_else(|| "none".to_string());
         Self {
             session: Arc::new(Mutex::new(session)),
             messages: Vec::new(),
@@ -159,6 +161,7 @@ impl TuiApp {
             scroll_speed,
             diff_style,
             diff_source,
+            diff_wrap_mode,
             reviewed_files: std::collections::HashSet::new(),
             quit: false,
             stream_rx: None,
@@ -1937,6 +1940,14 @@ impl TuiApp {
                         }
                     }
                 }
+                KeyCode::Char('w') => {
+                    // Cycle wrap mode
+                    self.diff_wrap_mode = match self.diff_wrap_mode.as_str() {
+                        "none" => "word".to_string(),
+                        "word" => "char".to_string(),
+                        _ => "none".to_string(),
+                    };
+                }
                 _ => {}
             }
             return Ok(());
@@ -2572,6 +2583,7 @@ impl TuiApp {
         let total = lines.len();
 
         let line_num_width = if total >= 10000 { 5 } else if total >= 1000 { 4 } else if total >= 100 { 3 } else if total >= 10 { 2 } else { 1 };
+        let content_width = (area.width as usize).saturating_sub(line_num_width + 4);
 
         // Identify current file
         let current_file = file_positions.iter().rev()
@@ -2590,8 +2602,8 @@ impl TuiApp {
             ""
         };
         let status_line = format!(
-            " ↑↓/PgUp/PgDn scroll  [ ] hunk jump  v toggle view  s toggle source{} m mark  Esc close | {}",
-            file_hint, current_file,
+            " ↑↓/PgUp/PgDn scroll  [ ] hunk jump  v toggle view  s toggle source{} m mark  w wrap:{}  Esc close | {}",
+            file_hint, self.diff_wrap_mode, current_file,
         );
 
         // Split area into sidebar + content if multiple files
@@ -2605,10 +2617,11 @@ impl TuiApp {
             (Rect::default(), area)
         };
 
+        let wrap_mode = &self.diff_wrap_mode;
         let items: Vec<ListItem> = visible
             .iter()
             .enumerate()
-            .map(|(i, line)| {
+            .flat_map(|(i, line)| {
                 let actual_line = scroll + i + 1;
                 let line_num = format!("{:>width$}", actual_line, width = line_num_width);
 
@@ -2634,10 +2647,21 @@ impl TuiApp {
                      t.bg)
                 };
 
-                ListItem::new(Line::from(vec![
-                    Span::styled(format!("{} ", line_num), Style::default().fg(num_fg).bg(num_bg)),
-                    Span::styled(format!("{}", line), fg_style.bg(bg_color)),
-                ]))
+                let line_content = if wrap_mode == "word" {
+                    textwrap::fill(line, content_width)
+                } else if wrap_mode == "char" {
+                    textwrap::fill(line, content_width)
+                } else {
+                    line.to_string()
+                };
+
+                line_content.lines().enumerate().map(move |(j, wrapped_line)| {
+                    let num_display = if j == 0 { line_num.clone() } else { " ".repeat(line_num_width + 1) };
+                    ListItem::new(Line::from(vec![
+                        Span::styled(num_display, Style::default().fg(num_fg).bg(num_bg)),
+                        Span::styled(format!("{}", wrapped_line), fg_style.bg(bg_color)),
+                    ]))
+                }).collect::<Vec<ListItem>>()
             })
             .collect();
 

@@ -77,6 +77,8 @@ pub struct Config {
     pub scroll_speed: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub diff_style: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diff_wrap_mode: Option<String>,
 }
 
 pub fn load_config() -> Result<Config> {
@@ -242,6 +244,7 @@ fn merge_config(base: Config, overlay: Config) -> Config {
         },
         scroll_speed: overlay.scroll_speed.or(base.scroll_speed),
         diff_style: overlay.diff_style.or(base.diff_style),
+        diff_wrap_mode: overlay.diff_wrap_mode.or(base.diff_wrap_mode),
     }
 }
 
