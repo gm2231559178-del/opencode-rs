@@ -2873,7 +2873,7 @@ impl TuiApp {
     }
 
     fn render_markdown_line(line: &str, width: usize, out: &mut Vec<Line>,
-        _text_style: Style, code_style: Style, _link_style: Style, _link_text_style: Style,
+        _text_style: Style, code_style: Style, link_style: Style, link_text_style: Style,
         emph_style: Style, strong_style: Style) {
         let wrapped = textwrap::fill(line, width as usize);
         for wl in wrapped.lines() {
@@ -2881,6 +2881,28 @@ impl TuiApp {
             let mut i = 0;
             let chars: Vec<char> = wl.chars().collect();
             while i < chars.len() {
+                // Inline link [text](url)
+                if chars[i] == '[' {
+                    let text_start = i + 1;
+                    let mut j = i + 1;
+                    while j < chars.len() && chars[j] != ']' { j += 1; }
+                    if j < chars.len() && j + 1 < chars.len() && chars[j + 1] == '(' {
+                        let url_start = j + 2;
+                        let mut k = url_start;
+                        while k < chars.len() && chars[k] != ')' { k += 1; }
+                        if k < chars.len() {
+                            let text: String = chars[text_start..j].iter().collect();
+                            let url: String = chars[url_start..k].iter().collect();
+                            spans.push(Span::styled(text, link_text_style));
+                            spans.push(Span::styled(format!("({})", url), link_style));
+                            i = k + 1;
+                            continue;
+                        }
+                    }
+                    spans.push(Span::raw(chars[i].to_string()));
+                    i += 1;
+                    continue;
+                }
                 // Inline code
                 if chars[i] == '`' {
                     let start = i;

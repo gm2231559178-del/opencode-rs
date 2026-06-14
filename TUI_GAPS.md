@@ -130,7 +130,7 @@
 
 - `[x]` Momentum scroll acceleration (step doubles: 10→20→40→80)
 - `[x]` Configurable scroll speed (`scroll_speed` setting, default 10)
-- `[ ]` Themed scrollbar visualization
+- `[x]` Themed scrollbar visualization (right-edge `░` track + `██` thumb)
 
 ---
 
