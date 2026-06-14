@@ -106,7 +106,7 @@
 - `[x]` Improved file sorting (prefix matches ranked above substring)
 - `[x]` Directory detection with trailing slash
 - `[x]` `#L` line range suffix already supported on `@` file references (pre-existing)
-- `[ ]` Frecency ranking (sort by frequency + recency of selection)
+- `[x]` Frecency ranking (sort by frequency of selection)
 - `[ ]` MCP tool autocomplete candidates
 
 ---

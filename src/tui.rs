@@ -109,6 +109,7 @@ pub struct TuiApp {
     pub session_cost: f64,
     pub mcp_status: Vec<(String, String)>,  // (name, status)
     pub modified_files: Vec<(String, usize, usize)>, // (path, additions, deletions)
+    pub show_splash: bool,
 }
 
 #[derive(Clone)]
@@ -188,6 +189,7 @@ impl TuiApp {
             session_cost: 0.0,
             mcp_status: Vec::new(),
             modified_files: Vec::new(),
+            show_splash: true,
         }
     }
 
@@ -1796,6 +1798,11 @@ impl TuiApp {
     }
 
     async fn handle_key(&mut self, key: crossterm::event::KeyEvent) -> Result<()> {
+        // Dismiss splash on first key press
+        if self.show_splash {
+            self.show_splash = false;
+        }
+
         // Dialog mode handles all keys when active
         if self.dialog.is_some() {
             self.handle_dialog_key(key)?;
@@ -2240,7 +2247,11 @@ impl TuiApp {
             .split(main_area);
 
         let mut ci = 0;
-        self.render_messages(f, chunks[ci]);
+        if self.show_splash {
+            self.render_splash(f, chunks[ci]);
+        } else {
+            self.render_messages(f, chunks[ci]);
+        }
         // Toast rendered as overlay on top of messages
         if has_toast {
             if let Some((ref msg, _)) = self.toast {
@@ -2607,6 +2618,58 @@ impl TuiApp {
             Paragraph::new(line).style(Style::default().bg(t.background_menu)),
             area,
         );
+    }
+
+    fn render_splash(&self, f: &mut Frame, area: Rect) {
+        let t = &self.theme;
+        let splash = r#"
+     ███████╗ ██████╗ ██████╗ ██████╗ ███╗   ██╗ ██████╗ ██████╗ ██████╗ ███████╗
+     ██╔════╝██╔═══██╗██╔══██╗██╔══██╗████╗  ██║██╔════╝██╔════╝██╔═══██╗██╔════╝
+     █████╗  ██║   ██║██████╔╝██████╔╝██╔██╗ ██║██║     ██║     ██║   ██║█████╗
+     ██╔══╝  ██║   ██║██╔══██╗██╔══██╗██║╚██╗██║██║     ██║     ██║   ██║██╔══╝
+     ██║     ╚██████╔╝██║  ██║██████╔╝██║ ╚████║╚██████╗╚██████╗╚██████╔╝███████╗
+     ╚═╝      ╚═════╝ ╚═╝  ╚═╝╚═════╝ ╚═╝  ╚═══╝ ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝"#;
+
+        let lines: Vec<Line> = splash.lines()
+            .map(|l| {
+                if l.trim().is_empty() {
+                    Line::from(vec![Span::raw("")])
+                } else {
+                    Line::from(vec![
+                        Span::raw("  "),
+                        Span::styled(l, Style::default().fg(t.primary).add_modifier(Modifier::BOLD)),
+                    ])
+                }
+            })
+            .collect();
+
+        let splash_height = (lines.len() as u16 + 2).min(area.height);
+        let splash_area = Rect {
+            x: area.x,
+            y: area.y,
+            width: area.width,
+            height: splash_height,
+        };
+
+        f.render_widget(Clear, splash_area);
+        let logo = Paragraph::new(lines)
+            .style(Style::default().bg(t.background_panel));
+        f.render_widget(logo, splash_area);
+
+        let hint = Span::styled(
+            format!("  opencode-rs {} | Press any key to start  ", env!("CARGO_PKG_VERSION")),
+            Style::default().fg(t.text_dim).add_modifier(Modifier::DIM),
+        );
+        let hint_area = Rect {
+            x: area.x,
+            y: area.y + splash_height,
+            width: area.width,
+            height: 1,
+        };
+        if hint_area.y < area.bottom() {
+            f.render_widget(Clear, hint_area);
+            f.render_widget(Paragraph::new(Line::from(vec![hint])).style(Style::default().bg(t.background_panel)), hint_area);
+        }
     }
 
     fn render_messages(&self, f: &mut Frame, area: Rect) {
