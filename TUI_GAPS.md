@@ -107,7 +107,7 @@
 - `[x]` Directory detection with trailing slash
 - `[x]` `#L` line range suffix already supported on `@` file references (pre-existing)
 - `[x]` Frecency ranking (sort by frequency of selection)
-- `[ ]` MCP tool autocomplete candidates
+- `[x]` MCP tool autocomplete candidates
 
 ---
 
