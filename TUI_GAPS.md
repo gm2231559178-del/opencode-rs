@@ -121,7 +121,7 @@
 
 ## P2 — Logo / Splash / Background
 
-- `[ ]` ASCII logo on startup
+- `[x]` ASCII logo on startup
 - `[ ]` Frame caching for animation performance
 
 ---

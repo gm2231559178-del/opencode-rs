@@ -2739,7 +2739,7 @@ impl TuiApp {
                 }
 
                 let content_width = w.saturating_sub(4);
-                if m.role == "assistant" || m.role == "reasoning" {
+                if m.role == "assistant" || m.role == "reasoning" || m.role == "tool_result" || m.role == "tool_call" {
                     Self::render_highlighted(&display_content, content_width, &mut lines, t);
                 } else {
                     let wrapped = textwrap::fill(&display_content, content_width);
@@ -2842,8 +2842,8 @@ impl TuiApp {
         let list_style = Style::default().fg(theme.markdown_list_item);
         let enum_style = Style::default().fg(theme.markdown_list_enumeration);
         let _code_block_style = Style::default().fg(theme.markdown_code_block);
-        let diff_add = Style::default().fg(theme.diff_add).add_modifier(Modifier::DIM);
-        let diff_del = Style::default().fg(theme.diff_del).add_modifier(Modifier::DIM);
+        let diff_add = Style::default().fg(theme.diff_add).bg(theme.diff_add_bg).add_modifier(Modifier::DIM);
+        let diff_del = Style::default().fg(theme.diff_del).bg(theme.diff_del_bg).add_modifier(Modifier::DIM);
         let diff_hunk = Style::default().fg(theme.diff_hunk).add_modifier(Modifier::DIM);
 
         let mut in_code = false;
@@ -3025,9 +3025,10 @@ impl TuiApp {
     }
 
     fn render_code_block(code: &str, width: usize, lang: &str, out: &mut Vec<Line>, theme: &Theme) {
+        let context_style = Style::default().fg(theme.diff_context).bg(theme.diff_context_bg);
         let _code_style = Style::default().fg(theme.dim).add_modifier(Modifier::DIM);
-        let diff_add = Style::default().fg(theme.diff_add).add_modifier(Modifier::DIM);
-        let diff_del = Style::default().fg(theme.diff_del).add_modifier(Modifier::DIM);
+        let diff_add = Style::default().fg(theme.diff_add).bg(theme.diff_add_bg).add_modifier(Modifier::DIM);
+        let diff_del = Style::default().fg(theme.diff_del).bg(theme.diff_del_bg).add_modifier(Modifier::DIM);
         let diff_hunk = Style::default().fg(theme.diff_hunk).add_modifier(Modifier::DIM);
 
         for line in code.lines() {
@@ -3051,7 +3052,10 @@ impl TuiApp {
                 for wl in wrapped.lines() {
                     let mut line_spans = vec![Span::raw("  ")];
                     line_spans.extend(Self::syntax_highlight_line(wl, lang, theme));
-                    out.push(Line::from(line_spans));
+                    let line_with_bg: Vec<Span> = line_spans.into_iter().map(|s| {
+                        Span::styled(s.to_string(), Style::default().fg(s.style.fg.unwrap_or(theme.diff_context)).bg(theme.diff_context_bg))
+                    }).collect();
+                    out.push(Line::from(line_with_bg));
                 }
             }
         }
