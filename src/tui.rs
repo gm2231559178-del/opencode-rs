@@ -2686,7 +2686,41 @@ impl TuiApp {
         let messages = List::new(items)
             .style(Style::default().bg(t.background_panel));
 
-        f.render_widget(messages, area);
+        // Split area: list takes all but rightmost 2 columns for scrollbar
+        let scrollbar_width = 2u16;
+        let list_width = area.width.saturating_sub(scrollbar_width);
+        let list_area = Rect { width: list_width, ..area };
+        let scrollbar_area = Rect {
+            x: area.right().saturating_sub(scrollbar_width),
+            width: scrollbar_width,
+            ..area
+        };
+
+        f.render_widget(messages, list_area);
+
+        // Custom scrollbar indicator
+        if total > max_visible {
+            let scrollbar_track = Span::styled(
+                "░".repeat(scrollbar_area.height as usize),
+                Style::default().fg(t.border).add_modifier(Modifier::DIM),
+            );
+            let scrollbar_bg = Paragraph::new(scrollbar_track)
+                .style(Style::default().bg(t.background_panel));
+            f.render_widget(scrollbar_bg, scrollbar_area);
+
+            let scroll_ratio = start as f64 / total.saturating_sub(max_visible) as f64;
+            let thumb_pos = (scroll_ratio * scrollbar_area.height.saturating_sub(1) as f64) as u16;
+            let thumb = Span::styled(
+                "██",
+                Style::default().fg(t.text_muted),
+            );
+            let thumb_area = Rect {
+                y: scrollbar_area.y + thumb_pos.min(scrollbar_area.height.saturating_sub(1)),
+                height: 1,
+                ..scrollbar_area
+            };
+            f.render_widget(Paragraph::new(thumb), thumb_area);
+        }
 
         // Scroll indicator when scrolled up from bottom
         if self.scroll > 0 {
