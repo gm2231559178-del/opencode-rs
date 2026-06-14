@@ -138,7 +138,7 @@
 
 - `[x]` Placeholder text when input is empty
 - `[x]` Character count in status bar
-- `[ ]` Separate metadata footer row below input (currently inside input box)
+- `[x]` Separate metadata footer row below input (model/agent/tokens/status)
 
 ---
 

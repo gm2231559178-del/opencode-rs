@@ -87,6 +87,7 @@ pub struct TuiApp {
     pub plan_mode: bool,
     pub autocomplete_candidates: Vec<String>,
     pub autocomplete_idx: isize,
+    pub autocomplete_frecency: std::collections::HashMap<String, u32>,
     pub theme: Theme,
     pub theme_name: String,
     pub reasoning: String,
@@ -165,6 +166,7 @@ impl TuiApp {
             plan_mode: false,
             autocomplete_candidates: Vec::new(),
             autocomplete_idx: -1,
+            autocomplete_frecency: std::collections::HashMap::new(),
             theme: crate::theme::Theme { ..crate::theme::DEFAULT },
             theme_name: "default".to_string(),
             reasoning: String::new(),
@@ -1703,12 +1705,14 @@ impl TuiApp {
                         .map(|s| s.lines().map(|l| l.to_string()).collect())
                         .unwrap_or_default();
                     if !file_query.is_empty() {
-                        file_candidates.sort_by_key(|c| {
+                        let frecency = &self.autocomplete_frecency;
+                        file_candidates.sort_by_cached_key(|c| {
                             let lower_c = c.to_lowercase();
-                            // Prefer prefix matches over substring matches
-                            let prefix_score = if lower_c.starts_with(&lower_q) { 0 } else { 100 };
-                            let pos = lower_c.find(&lower_q).unwrap_or(usize::MAX);
-                            prefix_score + pos
+                            (
+                                !lower_c.starts_with(&lower_q),
+                                lower_c.find(&lower_q).unwrap_or(usize::MAX),
+                                std::cmp::Reverse(frecency.get(c).copied().unwrap_or(0)),
+                            )
                         });
                     }
                     for c in &mut file_candidates {
@@ -1753,6 +1757,7 @@ impl TuiApp {
             let after_cursor = &self.input[self.cursor..];
             self.input = format!("{} {}", selected, after_cursor);
             self.cursor = selected.len() + 1;
+            *self.autocomplete_frecency.entry(selected.clone()).or_insert(0) += 1;
             self.autocomplete_candidates.clear();
             self.autocomplete_idx = -1;
             return true;
@@ -1784,6 +1789,7 @@ impl TuiApp {
             self.input = new_input;
             self.cursor = new_cursor;
         }
+        *self.autocomplete_frecency.entry(selected.clone()).or_insert(0) += 1;
         self.autocomplete_candidates.clear();
         self.autocomplete_idx = -1;
         true
