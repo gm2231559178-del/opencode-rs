@@ -1792,6 +1792,15 @@ impl TuiApp {
         if self.diff_viewer.is_some() {
             let lines_len = self.diff_viewer.as_ref().map(|v| v.0.len()).unwrap_or(0);
             let scroll = self.diff_viewer.as_ref().map(|v| v.1).unwrap_or(0);
+
+            // Find hunk positions for [ / ] navigation
+            let hunk_positions: Vec<usize> = self.diff_viewer.as_ref()
+                .map(|v| v.0.iter().enumerate()
+                    .filter(|(_, l)| l.starts_with("@@"))
+                    .map(|(i, _)| i)
+                    .collect())
+                .unwrap_or_default();
+
             match key.code {
                 KeyCode::Esc => { self.diff_viewer = None; }
                 KeyCode::Up => {
@@ -1815,6 +1824,18 @@ impl TuiApp {
                 }
                 KeyCode::End => {
                     self.diff_viewer.as_mut().map(|v| v.1 = lines_len.saturating_sub(1));
+                }
+                KeyCode::Char('[') | KeyCode::Char('{') => {
+                    // Jump to previous hunk
+                    if let Some(&pos) = hunk_positions.iter().rev().find(|&&p| p < scroll) {
+                        self.diff_viewer.as_mut().map(|v| v.1 = pos);
+                    }
+                }
+                KeyCode::Char(']') | KeyCode::Char('}') => {
+                    // Jump to next hunk
+                    if let Some(&pos) = hunk_positions.iter().find(|&&p| p > scroll) {
+                        self.diff_viewer.as_mut().map(|v| v.1 = pos);
+                    }
                 }
                 _ => {}
             }
@@ -2417,16 +2438,24 @@ impl TuiApp {
             None => return,
         };
         let t = &self.theme;
-        let max_lines = (f.area().height as usize).saturating_sub(6);
-        let scroll = *scroll;
+        let area = f.area();
 
+        // Find hunk positions for navigation
+        let hunk_positions: Vec<usize> = lines.iter().enumerate()
+            .filter(|(_, l)| l.starts_with("@@"))
+            .map(|(i, _)| i)
+            .collect();
+
+        let max_lines = (area.height as usize).saturating_sub(6);
+        let scroll = *scroll;
         let visible: Vec<&str> = lines.iter().skip(scroll).take(max_lines).map(|s| s.as_str()).collect();
         let total = lines.len();
 
-        // Calculate line number width based on total lines
         let line_num_width = if total >= 10000 { 5 } else if total >= 1000 { 4 } else if total >= 100 { 3 } else if total >= 10 { 2 } else { 1 };
 
-        let title = format!(" Diff Viewer [{} lines] (↑↓/PgUp/PgDn scroll, Esc close) ", total);
+        let title = format!(" Diff Viewer [{} lines, {} hunks] ", total, hunk_positions.len());
+        let status_line = format!(" ↑↓/PgUp/PgDn scroll  [ ] hunk jump  Esc close ");
+
         let items: Vec<ListItem> = visible
             .iter()
             .enumerate()
@@ -2434,18 +2463,31 @@ impl TuiApp {
                 let actual_line = scroll + i + 1;
                 let line_num = format!("{:>width$}", actual_line, width = line_num_width);
 
-                let (line_style, num_style) = if line.starts_with('+') && !line.starts_with("+++") {
-                    (Style::default().fg(t.diff_add).add_modifier(Modifier::DIM), Style::default().fg(t.diff_add))
+                let (fg_style, bg_color, num_fg, num_bg) = if line.starts_with('+') && !line.starts_with("+++") {
+                    (Style::default().fg(t.diff_add).add_modifier(Modifier::DIM),
+                     t.diff_add_bg,
+                     t.diff_add,
+                     t.diff_add_line_number_bg)
                 } else if line.starts_with('-') && !line.starts_with("---") {
-                    (Style::default().fg(t.diff_del).add_modifier(Modifier::DIM), Style::default().fg(t.diff_del))
+                    (Style::default().fg(t.diff_del).add_modifier(Modifier::DIM),
+                     t.diff_del_bg,
+                     t.diff_del,
+                     t.diff_del_line_number_bg)
                 } else if line.starts_with("@@") || line.starts_with("--- ") || line.starts_with("+++ ") {
-                    (Style::default().fg(t.diff_hunk).add_modifier(Modifier::DIM), Style::default().fg(t.diff_hunk))
+                    (Style::default().fg(t.diff_hunk).add_modifier(Modifier::DIM),
+                     t.bg,
+                     t.diff_hunk,
+                     t.bg)
                 } else {
-                    (Style::default().fg(t.text), Style::default().fg(t.text_muted))
+                    (Style::default().fg(t.diff_context),
+                     t.diff_context_bg,
+                     t.diff_line_number,
+                     t.bg)
                 };
+
                 ListItem::new(Line::from(vec![
-                    Span::styled(format!("{} ", line_num), num_style),
-                    Span::styled(*line, line_style),
+                    Span::styled(format!("{} ", line_num), Style::default().fg(num_fg).bg(num_bg)),
+                    Span::styled(format!("{}", line), fg_style.bg(bg_color)),
                 ]))
             })
             .collect();
@@ -2454,10 +2496,11 @@ impl TuiApp {
             Block::default()
                 .borders(Borders::ALL)
                 .title(title)
+                .title_bottom(status_line)
                 .border_style(Style::default().fg(t.primary)),
         );
 
-        f.render_widget(list, f.area());
+        f.render_widget(list, area);
     }
 
     fn render_toast_overlay(&self, f: &mut Frame, area: Rect, msg: &str) {
