@@ -490,11 +490,17 @@ impl TuiApp {
                         if self.notify {
                             send_notification("OpenCode Error", &message);
                         }
-                        self.messages.push(TuiMessage {
+                        let updated = self.messages.iter_mut().rev().find(|m| m.role == "assistant");
+                        if let Some(msg) = updated {
+                            msg.role = "error".to_string();
+                            msg.content = message;
+                        } else {
+                            self.messages.push(TuiMessage {
             age: 0, timestamp: chrono::Utc::now(),
-                            role: "error".to_string(),
-                            content: message,
-                        });
+                                role: "error".to_string(),
+                                content: message,
+                            });
+                        }
                         self.pending_response.clear();
                         done = true;
                     }
