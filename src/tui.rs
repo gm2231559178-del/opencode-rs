@@ -135,7 +135,6 @@ const SLASH_COMMANDS: &[&str] = &[
 ];
 
 // ── Layout constants ────────────────────────────────────
-const SPACING_PADDING: u16 = 2;
 const SIDEBAR_WIDTH: u16 = 36;
 const DIALOG_WIDTH: u16 = 60;
 const DIALOG_HEIGHT: u16 = 40;
