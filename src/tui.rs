@@ -2156,6 +2156,10 @@ impl TuiApp {
                     "Timestamps hidden".to_string()
                 });
             }
+            KeyCode::Char('g') if key.modifiers.contains(KeyModifiers::CONTROL) && self.scroll > 0 => {
+                self.scroll = 0;
+                self.show_toast("Scrolled to bottom".to_string());
+            }
             KeyCode::Char('o') if !self.streaming && self.input.is_empty() => {
                 self.toggle_collapse_last_tool();
                 let has_collapsed = self.collapsed.iter().any(|&idx| {
@@ -3848,6 +3852,7 @@ impl TuiApp {
             "  Ctrl+B         Toggle sidebar",
             "  Ctrl+P         Command palette",
             "  Ctrl+O         Toggle tool output collapse",
+            "  Ctrl+G         Jump to bottom when scrolled up",
             "  Tab/Shift+Tab    Navigate autocomplete",
             "  Enter          Submit / select autocomplete",
             "",
