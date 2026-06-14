@@ -2225,7 +2225,8 @@ impl TuiApp {
         // Build vertical constraints
         let mut constraints = Vec::new();
         constraints.push(Constraint::Min(1)); // messages
-        constraints.push(Constraint::Length(5)); // input
+        constraints.push(Constraint::Length(4)); // input
+        constraints.push(Constraint::Length(1)); // footer
 
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -2242,6 +2243,8 @@ impl TuiApp {
         }
         ci += 1;
         self.render_input(f, chunks[ci]);
+        ci += 1;
+        self.render_footer(f, chunks[ci]);
 
         // Autocomplete rendered as overlay above the input bar
         if has_ac {
@@ -2540,17 +2543,9 @@ impl TuiApp {
         );
     }
 
-    fn render_status(&self, f: &mut Frame, area: Rect) {
+    fn render_footer(&self, f: &mut Frame, area: Rect) {
         let status = if self.streaming { "streaming" } else { "idle" };
         let t = &self.theme;
-        let mode_tag = if self.plan_mode {
-            Span::styled(
-                " PLAN ",
-                Style::default().fg(t.warning).add_modifier(Modifier::BOLD),
-            )
-        } else {
-            Span::raw("")
-        };
         let left = Span::styled(
             format!(" {} ", self.model_name),
             Style::default().fg(t.primary).add_modifier(Modifier::BOLD),
@@ -2565,27 +2560,47 @@ impl TuiApp {
             format!(" {}:{} {} | {} ", self.theme_name, self.prompt_count, char_info, status),
             Style::default().fg(if self.streaming { t.success } else { t.text_muted }),
         );
-        let mut spans = vec![left, Span::styled(" │ ", Style::default().fg(t.border)), right];
-        if !self.agent_name.is_empty() {
-            spans.push(Span::styled(" │ ", Style::default().fg(t.border)));
-            spans.push(Span::styled(
-                format!(" {} ", self.agent_name),
-                Style::default().fg(t.secondary).add_modifier(Modifier::BOLD),
-            ));
-        }
+        let mut spans: Vec<Span> = Vec::new();
         if self.plan_mode {
+            spans.push(Span::styled(
+                " PLAN ",
+                Style::default().fg(t.warning).add_modifier(Modifier::BOLD),
+            ));
             spans.push(Span::styled(" │ ", Style::default().fg(t.border)));
-            spans.push(mode_tag);
         }
         if self.leader_mode {
-            spans.push(Span::styled(" │ ", Style::default().fg(t.border)));
             spans.push(Span::styled(
                 " LEADER ",
                 Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
             ));
+            spans.push(Span::styled(" │ ", Style::default().fg(t.border)));
         }
+        if !self.agent_name.is_empty() {
+            spans.push(Span::styled(
+                format!(" {} ", self.agent_name),
+                Style::default().fg(t.secondary).add_modifier(Modifier::BOLD),
+            ));
+            spans.push(Span::styled(" │ ", Style::default().fg(t.border)));
+        }
+        spans.push(left);
+        spans.push(Span::styled("│", Style::default().fg(t.border)));
+        spans.push(right);
+
+        // Context tokens bar on the far right
+        if self.context_percent > 0 {
+            let ctx = Span::styled(
+                format!(" {}% ", self.context_percent),
+                Style::default().fg(if self.context_percent > 80 { t.warning } else { t.text_muted }),
+            );
+            spans.push(Span::styled(" │ ", Style::default().fg(t.border)));
+            spans.push(ctx);
+        }
+
         let line = Line::from(spans);
-        f.render_widget(ratatui::widgets::Paragraph::new(line).style(Style::default().bg(t.background_element)), area);
+        f.render_widget(
+            Paragraph::new(line).style(Style::default().bg(t.background_menu)),
+            area,
+        );
     }
 
     fn render_messages(&self, f: &mut Frame, area: Rect) {
@@ -3263,12 +3278,6 @@ impl TuiApp {
 
         let inner = outer_block.inner(area);
 
-        // Split inner area into input text + status row at bottom
-        let chunks = Layout::default()
-            .direction(Direction::Vertical)
-            .constraints([Constraint::Min(1), Constraint::Length(1)])
-            .split(inner);
-
         f.render_widget(outer_block, area);
 
         // Show placeholder text if input is empty and not in leader mode
@@ -3277,19 +3286,16 @@ impl TuiApp {
                 " Type a message or / for commands...",
                 Style::default().fg(t.text_dim).bg(t.background_element),
             ));
-            f.render_widget(placeholder, chunks[0]);
+            f.render_widget(placeholder, inner);
         } else {
             let input = Paragraph::new(self.input.as_str())
                 .style(Style::default().fg(t.text).bg(t.background_element))
                 .wrap(Wrap { trim: true });
-            f.render_widget(input, chunks[0]);
+            f.render_widget(input, inner);
         }
 
         let cursor_pos = self.cursor.min(self.input.len()) as u16;
-        f.set_cursor_position((chunks[0].x + cursor_pos + 1, chunks[0].y + 1));
-
-        // Render status inside the input box
-        self.render_status(f, chunks[1]);
+        f.set_cursor_position((inner.x + cursor_pos + 1, inner.y + 1));
     }
 
     // ── Dialog rendering ────────────────────────────────────

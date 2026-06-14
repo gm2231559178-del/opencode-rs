@@ -89,7 +89,7 @@
 - `[x]` Render italic with `markdownEmph` style
 - `[x]` Render horizontal rules with `markdownHorizontalRule`
 - `[x]` Render list markers with `markdownListItem` / `markdownListEnumeration`
-- `[ ]` Render links with rendered `markdownLink` + `markdownLinkText` (inline link detection)
+- `[x]` Render links with rendered `markdownLink` + `markdownLinkText` (inline link detection)
 - `[ ]` Expand language keyword lists to match tree-sitter completeness
 
 ---
