@@ -2551,6 +2551,13 @@ impl TuiApp {
                         "disabled" => muted,
                         _ => muted,
                     };
+                    let symbol = match status.as_str() {
+                        "connected" => " ●",
+                        "error" => " ●",
+                        "needs_auth" => " △",
+                        "disabled" => " ○",
+                        _ => " •",
+                    };
                     let label = match status.as_str() {
                         "connected" => "Connected",
                         "error" => "Error",
@@ -2560,9 +2567,10 @@ impl TuiApp {
                     };
                     let display_name: String = name.chars().take(w.saturating_sub(6)).collect();
                     lines.push(Line::from(vec![
-                        Span::styled("  •", dot),
+                        Span::styled(format!(" {}", display_name), muted),
+                        Span::styled(format!(" {}", label), muted),
                         Span::raw(" "),
-                        Span::styled(format!("{} {}", display_name, label), muted),
+                        Span::styled(symbol, dot),
                     ]));
                 }
             }
