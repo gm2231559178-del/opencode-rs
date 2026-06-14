@@ -69,7 +69,7 @@
 - `[x]` **Status bar** — keyboard shortcut hints at bottom
 - `[x]` **Inline diff rendering** — render diffs inside the message flow (not just full-screen overlay)
 - `[x]` **Split/unified view toggle** — add `diff_style` config and `v` keybinding to toggle (visual split rendering TBD)
-- `[ ]` **File tree sidebar** — directory hierarchy for multi-file diffs
+- `[x]` **File tree sidebar** — directory hierarchy for multi-file diffs
 - `[ ]` **Review marking** — `m` key to mute/mark files as reviewed
 - `[ ]` **File navigation** — `n` / `p` cycles through files
 - `[ ]` **Source switching** — toggle between working tree and last turn diffs

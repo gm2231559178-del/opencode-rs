@@ -60,6 +60,7 @@ pub struct Session {
     pub cwd: String,
     pub last_response: String,
     pub snapshots: Vec<UndoEntry>,
+    pub turn_snapshot_start: usize,  // snapshot index at start of current turn
     pub plan_mode: bool,
     pub stats: UsageStats,
 }
@@ -126,6 +127,7 @@ impl Session {
             model: model_id.to_string(),
             last_response: String::new(),
             snapshots: Vec::new(),
+            turn_snapshot_start: 0,
             system_prompt,
             cwd,
             plan_mode: false,
@@ -139,6 +141,7 @@ impl Session {
 
         self.stats.prompt_count += 1;
         self.validate_messages();
+        self.turn_snapshot_start = self.snapshots.len();  // mark new turn boundary
 
         self.messages.push(Message {
             role: Role::User,
@@ -568,14 +571,21 @@ impl Session {
     }
 
     pub fn show_diff(&self) -> String {
+        self.diff_snapshots(0)
+    }
+
+    pub fn show_last_turn_diff(&self) -> String {
+        self.diff_snapshots(self.turn_snapshot_start)
+    }
+
+    fn diff_snapshots(&self, start: usize) -> String {
         if self.snapshots.is_empty() {
             return "No edits to diff.".to_string();
         }
         let mut out = String::new();
-
-        // Diff across all unique files
         let mut seen = std::collections::HashSet::new();
-        for entry in &self.snapshots {
+
+        for entry in self.snapshots[start..].iter() {
             if entry.file_path.is_empty() || seen.contains(&entry.file_path) {
                 continue;
             }
@@ -587,8 +597,7 @@ impl Session {
                     out.push_str(&format!("--- /dev/null\n+++ b/{}\n", entry.file_path));
                     if let Ok(new) = std::fs::read_to_string(&entry.file_path) {
                         for (j, nl) in new.lines().enumerate() {
-                            let hunk = format!("@@ -0,0 +{},{}, @@\n", j + 1, new.lines().count());
-                            out.push_str(&hunk);
+                            out.push_str(&format!("@@ -0,0 +{},{}, @@\n", j + 1, new.lines().count()));
                             out.push_str(&format!("+{}\n", nl));
                         }
                     }

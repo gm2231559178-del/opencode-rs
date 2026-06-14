@@ -73,6 +73,7 @@ pub struct TuiApp {
     pub scroll_accel: u32,
     pub scroll_speed: usize,
     pub diff_style: String,
+    pub diff_source: String,  // "working_tree" or "last_turn"
     pub quit: bool,
     pub stream_rx: Option<mpsc::Receiver<StreamEvent>>,
     pub pending_response: String,
@@ -143,6 +144,7 @@ impl TuiApp {
         );
         let scroll_speed = session.config.scroll_speed.unwrap_or(10);
         let diff_style = session.config.diff_style.clone().unwrap_or_else(|| "unified".to_string());
+        let diff_source = "working_tree".to_string();
         Self {
             session: Arc::new(Mutex::new(session)),
             messages: Vec::new(),
@@ -155,6 +157,7 @@ impl TuiApp {
             scroll_accel: 1,
             scroll_speed,
             diff_style,
+            diff_source,
             quit: false,
             stream_rx: None,
             pending_response: String::new(),
@@ -1390,7 +1393,11 @@ impl TuiApp {
             "/diff" => {
                 match self.session.try_lock() {
                     Ok(s) => {
-                        let diff = s.show_diff();
+                        let diff = if self.diff_source == "last_turn" {
+                            s.show_last_turn_diff()
+                        } else {
+                            s.show_diff()
+                        };
                         if diff.starts_with("---") {
                             let lines: Vec<String> = diff.lines().map(|l| l.to_string()).collect();
                             self.diff_viewer = Some((lines, 0, self.diff_style.clone()));
@@ -1884,6 +1891,26 @@ impl TuiApp {
                         } else {
                             "unified".to_string()
                         };
+                    }
+                }
+                KeyCode::Char('s') => {
+                    // Toggle diff source (working_tree / last_turn)
+                    self.diff_source = if self.diff_source == "working_tree" {
+                        "last_turn".to_string()
+                    } else {
+                        "working_tree".to_string()
+                    };
+                    // Rebuild diff with new source
+                    if let Ok(s) = self.session.try_lock() {
+                        let diff = if self.diff_source == "last_turn" {
+                            s.show_last_turn_diff()
+                        } else {
+                            s.show_diff()
+                        };
+                        if diff.starts_with("---") {
+                            let lines: Vec<String> = diff.lines().map(|l| l.to_string()).collect();
+                            self.diff_viewer = Some((lines, 0, self.diff_style.clone()));
+                        }
                     }
                 }
                 _ => {}
@@ -2539,7 +2566,7 @@ impl TuiApp {
             ""
         };
         let status_line = format!(
-            " ↑↓/PgUp/PgDn scroll  [ ] hunk jump  v toggle view{} Esc close | {}",
+            " ↑↓/PgUp/PgDn scroll  [ ] hunk jump  v toggle view  s toggle source{} Esc close | {}",
             file_hint, current_file,
         );
 
