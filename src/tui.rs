@@ -2816,7 +2816,7 @@ impl TuiApp {
         let w = msg.len() as u16 + 6;
         let overlay = Rect {
             x: area.right().saturating_sub(w.min(area.width)),
-            y: area.bottom().saturating_sub(1),
+            y: area.top().saturating_add(1),
             width: w.min(area.width),
             height: 1,
         };
