@@ -2840,14 +2840,17 @@ impl TuiApp {
         } else {
             String::new()
         };
-        let elapsed_fmt = self.thinking_elapsed();
-        let elapsed = if elapsed_fmt.is_empty() {
-            String::new()
-        } else {
-            format!(" {}", elapsed_fmt)
-        };
+        let elapsed = self.thinking_elapsed();
+        let right_text = format!(
+            "{}:{}{}{}| {}",
+            self.theme_name,
+            self.prompt_count,
+            char_info,
+            if elapsed.is_empty() { String::new() } else { format!(" {}", elapsed) },
+            status_symbol,
+        );
         let right = Span::styled(
-            format!("{}:{}{} {}| {}", self.theme_name, self.prompt_count, char_info, elapsed, status_symbol),
+            right_text,
             Style::default().fg(if self.streaming { t.success } else { t.text_muted }),
         );
         let mut spans: Vec<Span> = Vec::new();
