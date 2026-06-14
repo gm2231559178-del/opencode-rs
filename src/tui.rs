@@ -80,6 +80,7 @@ pub struct TuiApp {
     pub stream_rx: Option<mpsc::Receiver<StreamEvent>>,
     pub pending_response: String,
     pub streaming: bool,
+    pub thinking_started: Option<chrono::DateTime<chrono::Utc>>,
     pub cancelled: Arc<AtomicBool>,
     pub notify: bool,
     pub model_name: String,
@@ -177,6 +178,7 @@ impl TuiApp {
             stream_rx: None,
             pending_response: String::new(),
             streaming: false,
+            thinking_started: None,
             cancelled: Arc::new(AtomicBool::new(false)),
             notify: true,
             model_name,
@@ -507,6 +509,7 @@ impl TuiApp {
         }
         if done {
             self.streaming = false;
+            self.thinking_started = None;
             self.stream_rx = None;
             self.save_session();
         }
@@ -2221,6 +2224,7 @@ impl TuiApp {
                     self.perm_tx = perm_tx;
                     self.stream_rx = Some(rx);
                     self.streaming = true;
+                    self.thinking_started = Some(chrono::Utc::now());
                     self.pending_response.clear();
 
                     tokio::spawn(async move {
@@ -2361,6 +2365,21 @@ impl TuiApp {
 
     fn show_error_toast(&mut self, msg: String) {
         self.toast = Some((msg, TOAST_DURATION_ERROR, Color::Rgb(0xef, 0x44, 0x44)));
+    }
+
+    fn thinking_elapsed(&self) -> String {
+        if let Some(start) = self.thinking_started {
+            let elapsed = (chrono::Utc::now() - start).num_seconds();
+            if elapsed < 1 {
+                String::new()
+            } else if elapsed < 60 {
+                format!("{}s", elapsed)
+            } else {
+                format!("{}m{}s", elapsed / 60, elapsed % 60)
+            }
+        } else {
+            String::new()
+        }
     }
 
     fn render(&mut self, f: &mut Frame) {
@@ -2821,8 +2840,14 @@ impl TuiApp {
         } else {
             String::new()
         };
+        let elapsed_fmt = self.thinking_elapsed();
+        let elapsed = if elapsed_fmt.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", elapsed_fmt)
+        };
         let right = Span::styled(
-            format!(" {}:{} {} | {} ", self.theme_name, self.prompt_count, char_info, status_symbol),
+            format!("{}:{}{} {}| {}", self.theme_name, self.prompt_count, char_info, elapsed, status_symbol),
             Style::default().fg(if self.streaming { t.success } else { t.text_muted }),
         );
         let mut spans: Vec<Span> = Vec::new();
